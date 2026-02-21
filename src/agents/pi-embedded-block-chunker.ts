@@ -248,34 +248,23 @@ export class EmbeddedBlockChunker {
     const fenceSpans = parseFenceSpans(buffer);
     const preference = this.#chunking.breakPreference ?? "paragraph";
 
-    if (preference === "paragraph") {
-      const paragraphIdx = findSafeParagraphBreakIndex({
-        text: buffer,
-        fenceSpans,
-        minChars,
-        reverse: false,
-      });
-      if (paragraphIdx !== -1) {
-        return { index: paragraphIdx };
-      }
-    }
+    const tryParagraph = () =>
+      findSafeParagraphBreakIndex({ text: buffer, fenceSpans, minChars, reverse: false });
+    const tryNewline = () =>
+      findSafeNewlineBreakIndex({ text: buffer, fenceSpans, minChars, reverse: false });
+    const trySentence = () => findSafeSentenceBreakIndex(buffer, fenceSpans, minChars);
 
-    if (preference === "paragraph" || preference === "newline") {
-      const newlineIdx = findSafeNewlineBreakIndex({
-        text: buffer,
-        fenceSpans,
-        minChars,
-        reverse: false,
-      });
-      if (newlineIdx !== -1) {
-        return { index: newlineIdx };
-      }
-    }
+    const attempts: Array<() => number> =
+      preference === "sentence"
+        ? [trySentence, tryParagraph, tryNewline]
+        : preference === "newline"
+          ? [tryNewline, tryParagraph]
+          : /* "paragraph" */ [tryParagraph, tryNewline, trySentence];
 
-    if (preference !== "newline") {
-      const sentenceIdx = findSafeSentenceBreakIndex(buffer, fenceSpans, minChars);
-      if (sentenceIdx !== -1) {
-        return { index: sentenceIdx };
+    for (const attempt of attempts) {
+      const idx = attempt();
+      if (idx !== -1) {
+        return { index: idx };
       }
     }
 
@@ -292,65 +281,60 @@ export class EmbeddedBlockChunker {
     const fenceSpans = parseFenceSpans(buffer);
 
     const preference = this.#chunking.breakPreference ?? "paragraph";
-    if (preference === "paragraph") {
-      const paragraphIdx = findSafeParagraphBreakIndex({
-        text: window,
-        fenceSpans,
-        minChars,
-        reverse: true,
-      });
-      if (paragraphIdx !== -1) {
-        return { index: paragraphIdx };
+
+    // Try preferred break type first, then fall back to other structural
+    // break types.  All preferences share the same fallback chain; only the
+    // *order* differs.  This prevents the whitespace last-resort from firing
+    // when a perfectly good paragraph / sentence break exists nearby.
+    const tryParagraph = () =>
+      findSafeParagraphBreakIndex({ text: window, fenceSpans, minChars, reverse: true });
+    const tryNewline = () =>
+      findSafeNewlineBreakIndex({ text: window, fenceSpans, minChars, reverse: true });
+    const trySentence = () => findSafeSentenceBreakIndex(window, fenceSpans, minChars);
+
+    // Build ordered attempt list based on preference.
+    const attempts: Array<() => number> =
+      preference === "sentence"
+        ? [trySentence, tryParagraph, tryNewline]
+        : preference === "newline"
+          ? [tryNewline, tryParagraph]
+          : /* "paragraph" */ [tryParagraph, tryNewline, trySentence];
+
+    for (const attempt of attempts) {
+      const idx = attempt();
+      if (idx !== -1) {
+        return { index: idx };
       }
     }
 
-    if (preference === "paragraph" || preference === "newline") {
-      const newlineIdx = findSafeNewlineBreakIndex({
-        text: window,
-        fenceSpans,
-        minChars,
-        reverse: true,
-      });
-      if (newlineIdx !== -1) {
-        return { index: newlineIdx };
-      }
-    }
-
-    if (preference !== "newline") {
-      const sentenceIdx = findSafeSentenceBreakIndex(window, fenceSpans, minChars);
-      if (sentenceIdx !== -1) {
-        return { index: sentenceIdx };
-      }
-    }
-
-    if (preference === "newline" && buffer.length < maxChars) {
+    // No structural break found.  If the buffer hasn't reached maxChars yet,
+    // wait for more content rather than splitting at arbitrary whitespace.
+    if (buffer.length < maxChars) {
       return { index: -1 };
     }
 
+    // Buffer is at or past maxChars — must break now.  Try whitespace first,
+    // then hard-break at maxChars as the absolute last resort.
     for (let i = window.length - 1; i >= minChars; i--) {
       if (/\s/.test(window[i]) && isSafeFenceBreak(fenceSpans, i)) {
         return { index: i };
       }
     }
 
-    if (buffer.length >= maxChars) {
-      if (isSafeFenceBreak(fenceSpans, maxChars)) {
-        return { index: maxChars };
-      }
-      const fence = findFenceSpanAt(fenceSpans, maxChars);
-      if (fence) {
-        return {
-          index: maxChars,
-          fenceSplit: {
-            closeFenceLine: `${fence.indent}${fence.marker}`,
-            reopenFenceLine: fence.openLine,
-          },
-        };
-      }
+    if (isSafeFenceBreak(fenceSpans, maxChars)) {
       return { index: maxChars };
     }
-
-    return { index: -1 };
+    const fence = findFenceSpanAt(fenceSpans, maxChars);
+    if (fence) {
+      return {
+        index: maxChars,
+        fenceSplit: {
+          closeFenceLine: `${fence.indent}${fence.marker}`,
+          reopenFenceLine: fence.openLine,
+        },
+      };
+    }
+    return { index: maxChars };
   }
 }
 
