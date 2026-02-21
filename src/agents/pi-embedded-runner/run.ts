@@ -61,6 +61,10 @@ import { describeUnknownError } from "./utils.js";
 
 type ApiKeyInfo = ResolvedProviderAuth;
 
+// Session-level cache of lazy-loaded tools: persists across runs within the same session
+// so tools only need to be loaded once per session (until gateway restart).
+const sessionLoadedToolsCache = new Map<string, string[]>();
+
 // Avoid Anthropic's refusal test token poisoning session transcripts.
 const ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL = "ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL";
 const ANTHROPIC_MAGIC_STRING_REPLACEMENT = "ANTHROPIC MAGIC STRING TRIGGER REFUSAL (redacted)";
@@ -491,6 +495,16 @@ export async function runEmbeddedPiAgent(
       const MAX_RUN_LOOP_ITERATIONS = resolveMaxRunRetryIterations(profileCandidates.length);
       let overflowCompactionAttempts = 0;
       let toolResultTruncationAttempted = false;
+      // Lazy tool loading state: accumulates tool names loaded via tool_load across retries.
+      // Initialize from session cache so tools loaded in previous messages stay loaded.
+      const sessionCacheKey = params.sessionKey ?? params.sessionId;
+      const cachedLoadedTools = sessionLoadedToolsCache.get(sessionCacheKey);
+      let runScopedLoadedTools: string[] | undefined = cachedLoadedTools
+        ? [...cachedLoadedTools]
+        : undefined;
+      let toolLoadRetryPrompt: string | undefined;
+      const MAX_TOOL_LOAD_RETRIES = 3;
+      let toolLoadRetries = 0;
       const usageAccumulator = createUsageAccumulator();
       let lastRunPromptUsage: ReturnType<typeof normalizeUsage> | undefined;
       let autoCompactionCount = 0;
@@ -530,8 +544,11 @@ export async function runEmbeddedPiAgent(
           attemptedThinking.add(thinkLevel);
           await fs.mkdir(resolvedWorkspace, { recursive: true });
 
+          // Use tool_load retry prompt if available, otherwise the original user prompt
+          const basePrompt = toolLoadRetryPrompt ?? params.prompt;
+          toolLoadRetryPrompt = undefined; // consume it
           const prompt =
-            provider === "anthropic" ? scrubAnthropicRefusalMagic(params.prompt) : params.prompt;
+            provider === "anthropic" ? scrubAnthropicRefusalMagic(basePrompt) : basePrompt;
 
           const attempt = await runEmbeddedAttempt({
             sessionId: params.sessionId,
@@ -590,6 +607,7 @@ export async function runEmbeddedPiAgent(
             streamParams: params.streamParams,
             ownerNumbers: params.ownerNumbers,
             enforceFinalTag: params.enforceFinalTag,
+            loadedToolNames: runScopedLoadedTools,
           });
 
           const {
@@ -1013,6 +1031,33 @@ export async function runEmbeddedPiAgent(
                 status,
               });
             }
+          }
+
+          // Lazy tool loading: if a deferred tool stub was called, accumulate loaded tools,
+          // persist to session cache, and retry with the real tool schemas.
+          // Note: stubs intentionally abort the tool-use loop to stop the model from looping,
+          // so we check toolLoadAborted to allow retry even when aborted is true.
+          if (
+            attempt.toolLoadRequested?.length &&
+            (!aborted || attempt.toolLoadAborted) &&
+            toolLoadRetries < MAX_TOOL_LOAD_RETRIES
+          ) {
+            toolLoadRetries++;
+            runScopedLoadedTools = [
+              ...new Set([...(runScopedLoadedTools ?? []), ...attempt.toolLoadRequested]),
+            ];
+            // Persist to session cache so subsequent messages don't re-trigger loading
+            sessionLoadedToolsCache.set(sessionCacheKey, runScopedLoadedTools);
+            log.info(
+              `[lazy-loading] tool_load requested: ${attempt.toolLoadRequested.join(", ")} ` +
+                `(total loaded: ${runScopedLoadedTools.join(", ")}); retrying attempt ` +
+                `(${toolLoadRetries}/${MAX_TOOL_LOAD_RETRIES})`,
+            );
+            // Override prompt for retry: tell the LLM tools are now available
+            toolLoadRetryPrompt =
+              "[System] The tools you requested via tool_load are now loaded and available. " +
+              "Continue with the user's previous request.";
+            continue;
           }
 
           const usage = toNormalizedUsage(usageAccumulator);

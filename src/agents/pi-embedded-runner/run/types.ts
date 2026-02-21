@@ -50,4 +50,8 @@ export type EmbeddedRunAttemptResult = {
   compactionCount?: number;
   /** Client tool call detected (OpenResponses hosted tools). */
   clientToolCall?: { name: string; params: Record<string, unknown> };
+  /** Tool names requested via tool_load (lazy loading). */
+  toolLoadRequested?: string[];
+  /** True when the attempt was aborted intentionally by a lazy-loading stub. */
+  toolLoadAborted?: boolean;
 };

@@ -514,6 +514,16 @@ export type ToolsConfig = {
   fs?: FsToolsConfig;
   /** Runtime loop detection for repetitive/ stuck tool-call patterns. */
   loopDetection?: ToolLoopDetectionConfig;
+  /** Lazy tool loading: only load schemas for core + explicitly requested tools. */
+  lazyLoading?: {
+    /** Enable lazy tool loading (default: false). */
+    enabled?: boolean;
+    /**
+     * Tool names always loaded with full schemas (default: fs/exec/coding essentials).
+     * tool_load is always implicitly included.
+     */
+    coreTools?: string[];
+  };
   /** Sub-agent tool policy defaults (deny wins). */
   subagents?: {
     /** Default model selection for spawned sub-agents (string or {primary,fallbacks}). */

@@ -701,6 +701,13 @@ export const ToolsSchema = z
       })
       .strict()
       .optional(),
+    lazyLoading: z
+      .object({
+        enabled: z.boolean().optional(),
+        coreTools: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
