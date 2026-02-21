@@ -1,0 +1,18 @@
+{
+  "name": "@openclaw/copilot-studio",
+  "version": "0.1.0",
+  "description": "OpenClaw Copilot Studio tool gateway plugin (web search, email, calendar)",
+  "type": "module",
+  "dependencies": {
+    "@azure/msal-node": "^2.16.3"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "localPath": "extensions/copilot-studio",
+      "defaultChoice": "local"
+    }
+  }
+}
