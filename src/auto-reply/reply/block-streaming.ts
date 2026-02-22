@@ -1,6 +1,7 @@
 import { getChannelDock } from "../../channels/dock.js";
 import { normalizeChannelId } from "../../channels/plugins/index.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { BreakPreferenceType } from "../../config/types.base.js";
 import type { BlockStreamingCoalesceConfig } from "../../config/types.js";
 import { resolveAccountEntry } from "../../routing/account-lookup.js";
 import { normalizeAccountId } from "../../routing/session-key.js";
@@ -196,8 +197,8 @@ export function resolveBlockStreamingCoalescing(
   chunking?: {
     minChars: number;
     maxChars: number;
-    breakPreference: "paragraph" | "newline" | "sentence";
-    breakFallbacks?: ("paragraph" | "newline" | "sentence")[];
+    breakPreference: BreakPreferenceType;
+    breakFallbacks?: BreakPreferenceType[];
   },
   opts?: { chunkMode?: "length" | "newline" },
 ): BlockStreamingCoalescing | undefined {

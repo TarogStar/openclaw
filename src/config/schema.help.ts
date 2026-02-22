@@ -771,6 +771,10 @@ export const FIELD_HELP: Record<string, string> = {
     "Controls how fast older memory loses rank when temporal decay is enabled (half-life in days, default: 30). Lower values prioritize recent context more aggressively.",
   "agents.defaults.memorySearch.cache.enabled":
     "Caches computed chunk embeddings in SQLite so reindexing and incremental updates run faster (default: true). Keep this enabled unless investigating cache correctness or minimizing disk usage.",
+  "agents.defaults.blockStreamingChunk.breakPreference":
+    "Preferred break type for block streaming chunks (paragraph | newline | sentence). Default: paragraph.",
+  "agents.defaults.blockStreamingChunk.breakFallbacks":
+    'Ordered list of additional break types to try before whitespace fallback (e.g. ["newline", "sentence"]). Default: paragraph mode falls back to newline then sentence; others have no fallback.',
   memory: "Memory backend configuration (global).",
   "memory.backend":
     'Selects the global memory engine: "builtin" uses OpenClaw memory internals, while "qmd" uses the QMD sidecar pipeline. Keep "builtin" unless you intentionally operate QMD.',
