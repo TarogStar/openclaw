@@ -136,24 +136,41 @@ describe("msteams messenger", () => {
       serviceUrl: "https://service.example.com",
     };
 
-    it("sends thread messages via the provided context", async () => {
-      const sent: string[] = [];
-      const ctx = {
-        sendActivity: createRecordedSendActivity(sent),
+    it("sends thread messages via proactive messaging with replyToId", async () => {
+      const sent: Array<{ text?: string; replyToId?: string }> = [];
+      const seenRef: { reference?: unknown } = {};
+
+      const adapter: MSTeamsAdapter = {
+        continueConversation: async (_appId, reference, logic) => {
+          seenRef.reference = reference;
+          await logic({
+            sendActivity: async (activity: unknown) => {
+              const act = activity as { text?: string; replyToId?: string };
+              sent.push({ text: act.text, replyToId: act.replyToId });
+              return { id: `id:${act.text ?? ""}` };
+            },
+          });
+        },
+        process: async () => {},
       };
-      const adapter = createNoopAdapter();
 
       const ids = await sendMSTeamsMessages({
         replyStyle: "thread",
         adapter,
         appId: "app123",
         conversationRef: baseRef,
-        context: ctx,
         messages: [{ text: "one" }, { text: "two" }],
       });
 
-      expect(sent).toEqual(["one", "two"]);
+      expect(sent).toEqual([
+        { text: "one", replyToId: "activity123" },
+        { text: "two", replyToId: "activity123" },
+      ]);
       expect(ids).toEqual(["id:one", "id:two"]);
+
+      // Thread replies should preserve activityId in the conversation reference
+      const ref = seenRef.reference as { activityId?: string };
+      expect(ref.activityId).toBe("activity123");
     });
 
     it("sends top-level messages via continueConversation and strips activityId", async () => {
@@ -195,14 +212,18 @@ describe("msteams messenger", () => {
 
       try {
         const sent: Array<{ text?: string; entities?: unknown[] }> = [];
-        const ctx = {
-          sendActivity: async (activity: unknown) => {
-            sent.push(activity as { text?: string; entities?: unknown[] });
-            return { id: "id:one" };
-          },
-        };
 
-        const adapter = createNoopAdapter();
+        const adapter: MSTeamsAdapter = {
+          continueConversation: async (_appId, _reference, logic) => {
+            await logic({
+              sendActivity: async (activity: unknown) => {
+                sent.push(activity as { text?: string; entities?: unknown[] });
+                return { id: "id:one" };
+              },
+            });
+          },
+          process: async () => {},
+        };
 
         const ids = await sendMSTeamsMessages({
           replyStyle: "thread",
@@ -215,7 +236,6 @@ describe("msteams messenger", () => {
               conversationType: "channel",
             },
           },
-          context: ctx,
           messages: [{ text: "Hello @[John](29:08q2j2o3jc09au90eucae)", mediaUrl: localFile }],
           tokenProvider: {
             getAccessToken: async () => "token",
@@ -248,17 +268,27 @@ describe("msteams messenger", () => {
       const attempts: string[] = [];
       const retryEvents: Array<{ nextAttempt: number; delayMs: number }> = [];
 
-      const ctx = {
-        sendActivity: createRecordedSendActivity(attempts, 429),
+      const adapter: MSTeamsAdapter = {
+        continueConversation: async (_appId, _reference, logic) => {
+          await logic({
+            sendActivity: async (activity: unknown) => {
+              const { text } = activity as { text?: string };
+              attempts.push(text ?? "");
+              if (attempts.length === 1) {
+                throw Object.assign(new Error("throttled"), { statusCode: 429 });
+              }
+              return { id: `id:${text ?? ""}` };
+            },
+          });
+        },
+        process: async () => {},
       };
-      const adapter = createNoopAdapter();
 
       const ids = await sendMSTeamsMessages({
         replyStyle: "thread",
         adapter,
         appId: "app123",
         conversationRef: baseRef,
-        context: ctx,
         messages: [{ text: "one" }],
         retry: { maxAttempts: 2, baseDelayMs: 0, maxDelayMs: 0 },
         onRetry: (e) => retryEvents.push({ nextAttempt: e.nextAttempt, delayMs: e.delayMs }),
@@ -270,13 +300,16 @@ describe("msteams messenger", () => {
     });
 
     it("does not retry thread sends on client errors (4xx)", async () => {
-      const ctx = {
-        sendActivity: async () => {
-          throw Object.assign(new Error("bad request"), { statusCode: 400 });
+      const adapter: MSTeamsAdapter = {
+        continueConversation: async (_appId, _reference, logic) => {
+          await logic({
+            sendActivity: async () => {
+              throw Object.assign(new Error("bad request"), { statusCode: 400 });
+            },
+          });
         },
+        process: async () => {},
       };
-
-      const adapter = createNoopAdapter();
 
       await expect(
         sendMSTeamsMessages({
@@ -284,7 +317,6 @@ describe("msteams messenger", () => {
           adapter,
           appId: "app123",
           conversationRef: baseRef,
-          context: ctx,
           messages: [{ text: "one" }],
           retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
         }),
