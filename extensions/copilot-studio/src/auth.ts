@@ -115,14 +115,17 @@ export class CopilotStudioAuth {
 
     let resolveCode: ((token: string) => void) | null = null;
     let rejectCode: ((err: Error) => void) | null = null;
-    let deviceCodeInfo: { userCode: string; verificationUri: string; message: string } | null =
-      null;
 
-    // Start the device code flow — this calls deviceCodeCallback immediately,
-    // then waits for the user to complete auth in the browser
     this.pendingDeviceCode = new Promise<string>((resolve, reject) => {
       resolveCode = resolve;
       rejectCode = reject;
+    });
+
+    // Resolves as soon as MSAL calls the deviceCodeCallback
+    type DeviceCodeInfo = { userCode: string; verificationUri: string; message: string };
+    let resolveDeviceCode: ((info: DeviceCodeInfo) => void) | null = null;
+    const deviceCodeReady = new Promise<DeviceCodeInfo>((resolve) => {
+      resolveDeviceCode = resolve;
     });
 
     // Fire and forget — the promise resolves when user completes auth
@@ -130,12 +133,12 @@ export class CopilotStudioAuth {
       .acquireTokenByDeviceCode({
         scopes: this.scopes,
         deviceCodeCallback: (response) => {
-          deviceCodeInfo = {
+          this.log(`[copilot-studio] ${response.message}`);
+          resolveDeviceCode!({
             userCode: response.userCode,
             verificationUri: response.verificationUri,
             message: response.message,
-          };
-          this.log(`[copilot-studio] ${response.message}`);
+          });
         },
       })
       .then((result) => {
@@ -152,15 +155,18 @@ export class CopilotStudioAuth {
         rejectCode!(err);
       });
 
-    // Wait briefly for the deviceCodeCallback to fire
-    await new Promise((r) => setTimeout(r, 500));
+    // Race: either deviceCodeCallback fires (normal path) or the full
+    // token resolves first (e.g. cached token that MSAL picked up late)
+    const winner = await Promise.race([
+      deviceCodeReady.then((info) => ({ kind: "device-code" as const, info })),
+      this.pendingDeviceCode.then((token) => ({ kind: "token" as const, token })),
+    ]);
 
-    if (deviceCodeInfo) {
-      // Throw so the tool can return the auth URL to the user
-      throw new DeviceCodeRequiredError(deviceCodeInfo);
+    if (winner.kind === "token") {
+      return winner.token;
     }
 
-    // If callback didn't fire yet (unlikely), wait for the full flow
-    return this.pendingDeviceCode;
+    // Throw so the tool can return the auth URL to the user
+    throw new DeviceCodeRequiredError(winner.info);
   }
 }
