@@ -2,8 +2,12 @@
  * Process-global queue for adaptive cards that need to be forwarded to the
  * user's channel (e.g. Teams) as native attachments.
  *
- * Both the copilot-studio plugin (producer) and the msteams plugin (consumer)
- * run in the same Node.js process, so globalThis is a reliable transport.
+ * Producer: copilot-studio plugin (this file) — enqueuePendingCards()
+ * Consumer: msteams plugin (monitor-handler.ts) — drainPendingCards()
+ *
+ * Both plugins run in the same Node.js process, so globalThis is a
+ * reliable transport. The msteams plugin polls this queue when delivering
+ * tool results and sends cards as native Teams adaptive card attachments.
  */
 
 export type PendingAdaptiveCard = {
