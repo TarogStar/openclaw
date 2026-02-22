@@ -66,11 +66,15 @@ describe("web_search tool", () => {
     expect(details.content).toBe("It's sunny");
   });
 
-  it("throws when query parameter is missing", async () => {
+  it("returns error when query parameter is missing", async () => {
     const client = mockClient();
     const tool = createCopilotWebSearchTool(client);
 
-    await expect(tool.execute("call-1", {})).rejects.toThrow("query is required");
+    const result = await tool.execute("call-1", {});
+
+    const details = result.details as Record<string, unknown>;
+    expect(details.error).toBe("copilot_studio_error");
+    expect(details.message).toContain("query");
   });
 });
 
@@ -224,7 +228,7 @@ describe("consent card flow", () => {
     // Conversation should be stored for follow-up
     const convs = g[CONVERSATIONS_KEY] as Array<{ toolName: string }>;
     expect(convs).toHaveLength(1);
-    expect(convs[0].toolName).toBe("web_search");
+    expect(convs[0].toolName).toBe("copilot_web_search");
   });
 
   it("continues pending conversation on next call", async () => {
@@ -233,7 +237,7 @@ describe("consent card flow", () => {
     // Set up a pending conversation (simulating previous consent card)
     const g = globalThis as Record<string, unknown>;
     g[CONVERSATIONS_KEY] = [
-      { conversationId: "pending-conv", toolName: "email", timestamp: Date.now() },
+      { conversationId: "pending-conv", toolName: "copilot_email", timestamp: Date.now() },
     ];
     g[INVOKES_KEY] = [{ actionData: { action: "allow" }, timestamp: Date.now() }];
 

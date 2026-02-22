@@ -1,16 +1,16 @@
+import { readStringParam } from "openclaw/plugin-sdk";
 import { enqueuePendingCards } from "./adaptive-card-queue.js";
 import { DeviceCodeRequiredError } from "./auth.js";
 import type { CopilotStudioClient, QueryResult } from "./client.js";
 import {
-  storePendingConversation,
   popPendingConversation,
   popPendingInvoke,
+  storePendingConversation,
 } from "./pending-conversations.js";
 
 // Max characters for tool result text to prevent blowing up local model context
 const MAX_RESULT_CHARS = 3000;
 
-// Re-usable helpers (same pattern as OpenClaw core tools)
 function jsonResult(payload: unknown) {
   const text = JSON.stringify(payload, null, 2);
   return {
@@ -27,15 +27,6 @@ function jsonResult(payload: unknown) {
   };
 }
 
-function readString(params: Record<string, unknown>, key: string, required = false): string {
-  const raw = params[key];
-  if (typeof raw !== "string") {
-    if (required) throw new Error(`${key} is required`);
-    return "";
-  }
-  return raw.trim();
-}
-
 /**
  * Build a tool result from a QueryResult. If the result contains adaptive cards
  * (e.g. consent prompts), returns them as structured data so the channel can
@@ -47,7 +38,8 @@ function buildQueryToolResult(
   toolName: string,
 ) {
   if (result.adaptiveCards.length > 0) {
-    // Enqueue cards for the channel to send natively (e.g. as Teams adaptive cards)
+    // Enqueue cards for the channel to send natively (e.g. as Teams adaptive cards).
+    // Consumer: msteams plugin's monitor-handler.ts drains these via drainPendingCards().
     enqueuePendingCards({
       cards: result.adaptiveCards,
       conversationId: result.conversationId,
@@ -124,7 +116,9 @@ async function queryOrContinue(
       activityValue,
     );
 
-    // If consent response already has substantive data or new cards, return it
+    // If consent response already has substantive data or new cards, return it.
+    // The 50-char threshold distinguishes brief "OK" / "Permission granted" acks
+    // from actual data responses (email lists, search results, etc.).
     if (consentResult.text.length > 50 || consentResult.adaptiveCards.length > 0) {
       return consentResult;
     }
@@ -172,16 +166,16 @@ const WebSearchSchema = {
 
 export function createCopilotWebSearchTool(client: CopilotStudioClient) {
   return {
-    label: "Web Search",
-    name: "web_search",
+    label: "Copilot Web Search",
+    name: "copilot_web_search",
     description:
       "Search the web for current information. Returns a concise answer with source URLs.",
     parameters: WebSearchSchema,
     execute: async (_toolCallId: string, args: unknown) => {
       const params = args as Record<string, unknown>;
-      const query = readString(params, "query", true);
-
       try {
+        const query = readStringParam(params, "query", { required: true });
+
         const prompt = [
           `Search the web for: ${query}`,
           "",
@@ -193,11 +187,15 @@ export function createCopilotWebSearchTool(client: CopilotStudioClient) {
           "- [Title](URL)",
         ].join("\n");
 
-        const result = await queryOrContinue(client, prompt, "web_search");
+        const result = await queryOrContinue(client, prompt, "copilot_web_search");
 
-        return buildQueryToolResult(result, { query, provider: "copilot-studio" }, "web_search");
+        return buildQueryToolResult(
+          result,
+          { query, provider: "copilot-studio" },
+          "copilot_web_search",
+        );
       } catch (err) {
-        return handleToolError(err, "web_search");
+        return handleToolError(err, "copilot_web_search");
       }
     },
   };
@@ -238,35 +236,34 @@ const EmailSchema = {
 
 export function createCopilotEmailTool(client: CopilotStudioClient) {
   return {
-    label: "Email",
-    name: "email",
+    label: "Copilot Email",
+    name: "copilot_email",
     description:
       "Read, search, or send email via Microsoft 365. Use action='read' for recent mail, 'search' to find specific emails, 'send' to compose and send.",
     parameters: EmailSchema,
     execute: async (_toolCallId: string, args: unknown) => {
       const params = args as Record<string, unknown>;
-      const action = readString(params, "action", true);
-
       try {
+        const action = readStringParam(params, "action", { required: true });
         let prompt: string;
 
         switch (action) {
           case "read": {
-            const query = readString(params, "query");
+            const query = readStringParam(params, "query");
             prompt = query
               ? `Check my recent emails. Filter: ${query}. List up to 5 with sender, subject, and a brief summary. Do not include full email bodies.`
               : "Check my recent emails. List up to 5 with sender, subject, and a brief summary. Do not include full email bodies.";
             break;
           }
           case "search": {
-            const query = readString(params, "query", true);
+            const query = readStringParam(params, "query", { required: true });
             prompt = `Search my emails for: ${query}. List up to 5 matches with sender, subject, date, and a brief summary. Do not include full email bodies.`;
             break;
           }
           case "send": {
-            const to = readString(params, "to", true);
-            const subject = readString(params, "subject", true);
-            const body = readString(params, "body", true);
+            const to = readStringParam(params, "to", { required: true });
+            const subject = readStringParam(params, "subject", { required: true });
+            const body = readStringParam(params, "body", { required: true });
             prompt = `Send an email to ${to} with subject "${subject}" and body:\n\n${body}\n\nConfirm when sent.`;
             break;
           }
@@ -277,11 +274,15 @@ export function createCopilotEmailTool(client: CopilotStudioClient) {
             });
         }
 
-        const result = await queryOrContinue(client, prompt, "email");
+        const result = await queryOrContinue(client, prompt, "copilot_email");
 
-        return buildQueryToolResult(result, { action, provider: "copilot-studio" }, "email");
+        return buildQueryToolResult(
+          result,
+          { action, provider: "copilot-studio" },
+          "copilot_email",
+        );
       } catch (err) {
-        return handleToolError(err, "email");
+        return handleToolError(err, "copilot_email");
       }
     },
   };
@@ -327,34 +328,33 @@ const CalendarSchema = {
 
 export function createCopilotCalendarTool(client: CopilotStudioClient) {
   return {
-    label: "Calendar",
-    name: "calendar",
+    label: "Copilot Calendar",
+    name: "copilot_calendar",
     description:
       "Check, search, or create calendar events via Microsoft 365. Use action='check' for upcoming events, 'search' to find specific events, 'create' to schedule a new event.",
     parameters: CalendarSchema,
     execute: async (_toolCallId: string, args: unknown) => {
       const params = args as Record<string, unknown>;
-      const action = readString(params, "action", true);
-
       try {
+        const action = readStringParam(params, "action", { required: true });
         let prompt: string;
 
         switch (action) {
           case "check": {
-            const query = readString(params, "query") || "next 24 hours";
+            const query = readStringParam(params, "query") || "next 24 hours";
             prompt = `Check my calendar for ${query}. List each event with time, title, and attendees. Be concise.`;
             break;
           }
           case "search": {
-            const query = readString(params, "query", true);
+            const query = readStringParam(params, "query", { required: true });
             prompt = `Search my calendar for events matching: ${query}. List matching events with date, time, title, and attendees.`;
             break;
           }
           case "create": {
-            const title = readString(params, "title", true);
-            const datetime = readString(params, "datetime", true);
-            const duration = readString(params, "duration") || "30 minutes";
-            const attendees = readString(params, "attendees");
+            const title = readStringParam(params, "title", { required: true });
+            const datetime = readStringParam(params, "datetime", { required: true });
+            const duration = readStringParam(params, "duration") || "30 minutes";
+            const attendees = readStringParam(params, "attendees");
             prompt = attendees
               ? `Create a calendar event: "${title}" at ${datetime}, duration ${duration}, with attendees: ${attendees}. Confirm when created.`
               : `Create a calendar event: "${title}" at ${datetime}, duration ${duration}. Confirm when created.`;
@@ -367,11 +367,15 @@ export function createCopilotCalendarTool(client: CopilotStudioClient) {
             });
         }
 
-        const result = await queryOrContinue(client, prompt, "calendar");
+        const result = await queryOrContinue(client, prompt, "copilot_calendar");
 
-        return buildQueryToolResult(result, { action, provider: "copilot-studio" }, "calendar");
+        return buildQueryToolResult(
+          result,
+          { action, provider: "copilot-studio" },
+          "copilot_calendar",
+        );
       } catch (err) {
-        return handleToolError(err, "calendar");
+        return handleToolError(err, "copilot_calendar");
       }
     },
   };
