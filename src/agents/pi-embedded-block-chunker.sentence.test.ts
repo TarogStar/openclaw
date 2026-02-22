@@ -43,12 +43,6 @@ describe("EmbeddedBlockChunker sentence preference", () => {
     chunker.drain({ force: false, emit: (chunk) => chunks.push(chunk) });
     chunker.drain({ force: true, emit: (chunk) => chunks.push(chunk) });
 
-    console.log("=== BULK APPEND CHUNKS ===");
-    for (let i = 0; i < chunks.length; i++) {
-      console.log(`--- Chunk ${i} (${chunks[i].length} chars) ---`);
-      console.log(chunks[i]);
-    }
-
     // No chunk should split inside bold headers
     for (const chunk of chunks) {
       expect(chunk).not.toMatch(/\*\*\w+$/); // ends mid-bold
@@ -71,12 +65,6 @@ describe("EmbeddedBlockChunker sentence preference", () => {
     }
     // Force flush remaining
     chunker.drain({ force: true, emit: (chunk) => chunks.push(chunk) });
-
-    console.log("\n=== TOKEN-BY-TOKEN CHUNKS ===");
-    for (let i = 0; i < chunks.length; i++) {
-      console.log(`--- Chunk ${i} (${chunks[i].length} chars) ---`);
-      console.log(chunks[i]);
-    }
 
     // No chunk should split inside bold headers
     for (const chunk of chunks) {
@@ -101,16 +89,82 @@ describe("EmbeddedBlockChunker sentence preference", () => {
     }
     chunker.drain({ force: true, emit: (chunk) => chunks.push(chunk) });
 
-    console.log("\n=== PARAGRAPH MODE CHUNKS ===");
-    for (let i = 0; i < chunks.length; i++) {
-      console.log(`--- Chunk ${i} (${chunks[i].length} chars) ---`);
-      console.log(chunks[i]);
-    }
-
     // Should never split inside bold headers
     for (const chunk of chunks) {
       expect(chunk).not.toMatch(/\*\*\w+$/);
       expect(chunk).not.toMatch(/^\w+\*\*/);
+    }
+  });
+
+  it("breakFallbacks: sentence with paragraph fallback finds paragraph breaks", () => {
+    // Content without sentence-ending punctuation but with paragraph breaks
+    const content = [
+      "**Section One**",
+      "First line of section one",
+      "Second line of section one",
+      "",
+      "**Section Two**",
+      "First line of section two",
+      "Second line of section two",
+      "",
+      "**Section Three**",
+      "First line of section three",
+      "Second line of section three",
+    ].join("\n");
+
+    const chunker = new EmbeddedBlockChunker({
+      minChars: 50,
+      maxChars: 200,
+      breakPreference: "sentence",
+      breakFallbacks: ["paragraph"],
+    });
+
+    const chunks: string[] = [];
+    for (const char of content) {
+      chunker.append(char);
+      chunker.drain({ force: false, emit: (chunk) => chunks.push(chunk) });
+    }
+    chunker.drain({ force: true, emit: (chunk) => chunks.push(chunk) });
+
+    // With paragraph fallback, should break at paragraph boundaries
+    // instead of arbitrary whitespace
+    for (const chunk of chunks) {
+      expect(chunk).not.toMatch(/\*\*\w+$/);
+      expect(chunk).not.toMatch(/^\w+\*\*/);
+    }
+  });
+
+  it("no breakFallbacks: sentence mode without fallback uses whitespace at maxChars", () => {
+    // Content without sentence-ending punctuation — should wait for maxChars
+    // then fall back to whitespace
+    const content = "word ".repeat(100); // 500 chars, no punctuation
+
+    const chunkerWithFallback = new EmbeddedBlockChunker({
+      minChars: 50,
+      maxChars: 200,
+      breakPreference: "sentence",
+      breakFallbacks: ["paragraph", "newline"],
+    });
+
+    const chunkerWithout = new EmbeddedBlockChunker({
+      minChars: 50,
+      maxChars: 200,
+      breakPreference: "sentence",
+    });
+
+    chunkerWithFallback.append(content);
+    chunkerWithout.append(content);
+
+    const chunksWithFallback: string[] = [];
+    const chunksWithout: string[] = [];
+    chunkerWithFallback.drain({ force: false, emit: (c) => chunksWithFallback.push(c) });
+    chunkerWithout.drain({ force: false, emit: (c) => chunksWithout.push(c) });
+
+    // Both should produce the same output since there are no paragraph/newline
+    // breaks either — both fall through to whitespace at maxChars
+    expect(chunksWithFallback.length).toBe(chunksWithout.length);
+    for (let i = 0; i < chunksWithFallback.length; i++) {
+      expect(chunksWithFallback[i]).toBe(chunksWithout[i]);
     }
   });
 });

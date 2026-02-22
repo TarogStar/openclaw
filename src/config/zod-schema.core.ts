@@ -322,25 +322,18 @@ export const BlockStreamingCoalesceSchema = z
   })
   .strict();
 
-export const ReplyRuntimeConfigSchemaShape = {
-  historyLimit: z.number().int().min(0).optional(),
-  dmHistoryLimit: z.number().int().min(0).optional(),
-  dms: z.record(z.string(), DmConfigSchema.optional()).optional(),
-  textChunkLimit: z.number().int().positive().optional(),
-  chunkMode: z.enum(["length", "newline"]).optional(),
-  blockStreaming: z.boolean().optional(),
-  blockStreamingCoalesce: BlockStreamingCoalesceSchema.optional(),
-  responsePrefix: z.string().optional(),
-  mediaMaxMb: z.number().positive().optional(),
-};
+const BreakPreferenceSchema = z.union([
+  z.literal("paragraph"),
+  z.literal("newline"),
+  z.literal("sentence"),
+]);
 
 export const BlockStreamingChunkSchema = z
   .object({
     minChars: z.number().int().positive().optional(),
     maxChars: z.number().int().positive().optional(),
-    breakPreference: z
-      .union([z.literal("paragraph"), z.literal("newline"), z.literal("sentence")])
-      .optional(),
+    breakPreference: BreakPreferenceSchema.optional(),
+    breakFallbacks: z.array(BreakPreferenceSchema).optional(),
   })
   .strict();
 

@@ -1,10 +1,14 @@
 import type { FenceSpan } from "../markdown/fences.js";
 import { findFenceSpanAt, isSafeFenceBreak, parseFenceSpans } from "../markdown/fences.js";
 
+export type BreakType = "paragraph" | "newline" | "sentence";
+
 export type BlockReplyChunking = {
   minChars: number;
   maxChars: number;
-  breakPreference?: "paragraph" | "newline" | "sentence";
+  breakPreference?: BreakType;
+  /** Additional break types to try (in order) before whitespace fallback. */
+  breakFallbacks?: BreakType[];
   /** When true, flush eagerly on \n\n paragraph boundaries regardless of minChars. */
   flushOnParagraph?: boolean;
 };
@@ -91,12 +95,45 @@ function findSafeNewlineBreakIndex(params: {
   return -1;
 }
 
+function findBreakByType(
+  type: BreakType,
+  text: string,
+  fenceSpans: FenceSpan[],
+  minChars: number,
+  reverse: boolean,
+): number {
+  switch (type) {
+    case "sentence":
+      return findSafeSentenceBreakIndex(text, fenceSpans, minChars);
+    case "newline":
+      return findSafeNewlineBreakIndex({ text, fenceSpans, minChars, reverse });
+    case "paragraph":
+      return findSafeParagraphBreakIndex({ text, fenceSpans, minChars, reverse });
+  }
+}
+
 export class EmbeddedBlockChunker {
   #buffer = "";
   readonly #chunking: BlockReplyChunking;
 
   constructor(chunking: BlockReplyChunking) {
     this.#chunking = chunking;
+  }
+
+  /** Returns the ordered list of break types: preference first, then fallbacks. */
+  #breakTypeOrder(): BreakType[] {
+    const primary = this.#chunking.breakPreference ?? "paragraph";
+    const fallbacks = this.#chunking.breakFallbacks ?? [];
+    // Deduplicate: skip fallbacks that duplicate the primary.
+    const seen = new Set<BreakType>([primary]);
+    const result: BreakType[] = [primary];
+    for (const fb of fallbacks) {
+      if (!seen.has(fb)) {
+        seen.add(fb);
+        result.push(fb);
+      }
+    }
+    return result;
   }
 
   append(text: string) {
@@ -246,23 +283,10 @@ export class EmbeddedBlockChunker {
       return { index: -1 };
     }
     const fenceSpans = parseFenceSpans(buffer);
-    const preference = this.#chunking.breakPreference ?? "paragraph";
+    const types = this.#breakTypeOrder();
 
-    const tryParagraph = () =>
-      findSafeParagraphBreakIndex({ text: buffer, fenceSpans, minChars, reverse: false });
-    const tryNewline = () =>
-      findSafeNewlineBreakIndex({ text: buffer, fenceSpans, minChars, reverse: false });
-    const trySentence = () => findSafeSentenceBreakIndex(buffer, fenceSpans, minChars);
-
-    const attempts: Array<() => number> =
-      preference === "sentence"
-        ? [trySentence, tryParagraph, tryNewline]
-        : preference === "newline"
-          ? [tryNewline, tryParagraph]
-          : /* "paragraph" */ [tryParagraph, tryNewline, trySentence];
-
-    for (const attempt of attempts) {
-      const idx = attempt();
+    for (const type of types) {
+      const idx = findBreakByType(type, buffer, fenceSpans, minChars, false);
       if (idx !== -1) {
         return { index: idx };
       }
@@ -280,28 +304,10 @@ export class EmbeddedBlockChunker {
     const window = buffer.slice(0, Math.min(maxChars, buffer.length));
     const fenceSpans = parseFenceSpans(buffer);
 
-    const preference = this.#chunking.breakPreference ?? "paragraph";
-
-    // Try preferred break type first, then fall back to other structural
-    // break types.  All preferences share the same fallback chain; only the
-    // *order* differs.  This prevents the whitespace last-resort from firing
-    // when a perfectly good paragraph / sentence break exists nearby.
-    const tryParagraph = () =>
-      findSafeParagraphBreakIndex({ text: window, fenceSpans, minChars, reverse: true });
-    const tryNewline = () =>
-      findSafeNewlineBreakIndex({ text: window, fenceSpans, minChars, reverse: true });
-    const trySentence = () => findSafeSentenceBreakIndex(window, fenceSpans, minChars);
-
-    // Build ordered attempt list based on preference.
-    const attempts: Array<() => number> =
-      preference === "sentence"
-        ? [trySentence, tryParagraph, tryNewline]
-        : preference === "newline"
-          ? [tryNewline, tryParagraph]
-          : /* "paragraph" */ [tryParagraph, tryNewline, trySentence];
-
-    for (const attempt of attempts) {
-      const idx = attempt();
+    // Try each configured break type in order (preference first, then fallbacks).
+    const types = this.#breakTypeOrder();
+    for (const type of types) {
+      const idx = findBreakByType(type, window, fenceSpans, minChars, true);
       if (idx !== -1) {
         return { index: idx };
       }
