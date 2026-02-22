@@ -27,6 +27,7 @@ import {
   resolveThinkingDefault,
 } from "../agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import { getPluginAgentRunner } from "../agents/runner-registry.js";
 import { buildWorkspaceSkillSnapshot } from "../agents/skills.js";
 import { getSkillsSnapshotVersion } from "../agents/skills/refresh.js";
 import { resolveAgentTimeoutMs } from "../agents/timeout.js";
@@ -170,6 +171,19 @@ function runAgentAttempt(params: {
       extraSystemPrompt: params.opts.extraSystemPrompt,
       cliSessionId,
       images: params.isFallbackRetry ? undefined : params.opts.images,
+      streamParams: params.opts.streamParams,
+    });
+  }
+
+  const pluginRunner = getPluginAgentRunner(params.providerOverride);
+  if (pluginRunner) {
+    return pluginRunner({
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      agentId: params.sessionAgentId,
+      prompt: effectivePrompt,
+      timeoutMs: params.timeoutMs,
+      runId: params.runId,
       streamParams: params.opts.streamParams,
     });
   }

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { registerPluginAgentRunner, type PluginAgentRunnerFn } from "../agents/runner-registry.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
 import type { ChannelDock } from "../channels/dock.js";
 import type { ChannelPlugin } from "../channels/plugins/types.js";
@@ -497,6 +498,8 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
       registerCli: (registrar, opts) => registerCli(record, registrar, opts),
       registerService: (service) => registerService(record, service),
       registerCommand: (command) => registerCommand(record, command),
+      registerAgentRunner: (providerId: string, runner: PluginAgentRunnerFn) =>
+        registerPluginAgentRunner(providerId, runner),
       resolvePath: (input: string) => resolveUserPath(input),
       on: (hookName, handler, opts) => registerTypedHook(record, hookName, handler, opts),
     };

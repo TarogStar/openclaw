@@ -260,7 +260,7 @@ describe("error handling", () => {
     clearGlobalState();
   });
 
-  it("returns auth URL on DeviceCodeRequiredError", async () => {
+  it("returns auth URL and enqueues auth card on DeviceCodeRequiredError", async () => {
     const client = mockClient();
     (client.query as ReturnType<typeof vi.fn>).mockRejectedValue(
       new DeviceCodeRequiredError({
@@ -277,6 +277,12 @@ describe("error handling", () => {
     expect(details.error).toBe("auth_required");
     expect(details.userCode).toBe("ABC123");
     expect(details.verificationUri).toBe("https://microsoft.com/devicelogin");
+
+    // Auth card should be enqueued for direct delivery to user
+    const g = globalThis as Record<string, unknown>;
+    const cards = g[CARDS_KEY] as Array<{ cards: unknown[]; text: string }>;
+    expect(cards).toHaveLength(1);
+    expect(cards[0].text).toContain("ABC123");
   });
 
   it("returns error message for general errors", async () => {

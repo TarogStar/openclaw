@@ -4,7 +4,8 @@
   "description": "OpenClaw Copilot Studio tool gateway plugin (web search, email, calendar)",
   "type": "module",
   "dependencies": {
-    "@azure/msal-node": "^2.16.3"
+    "@azure/msal-node": "^2.16.3",
+    "@sinclair/typebox": "0.34.48"
   },
   "openclaw": {
     "extensions": [

@@ -1,4 +1,4 @@
-import { readStringParam } from "openclaw/plugin-sdk";
+import { Type } from "@sinclair/typebox";
 import { enqueuePendingCards } from "./adaptive-card-queue.js";
 import { DeviceCodeRequiredError } from "./auth.js";
 import type { CopilotStudioClient, QueryResult } from "./client.js";
@@ -136,33 +136,86 @@ async function queryOrContinue(
  */
 function handleToolError(err: unknown, toolName: string) {
   if (err instanceof DeviceCodeRequiredError) {
+    // Send auth card directly to the user via the channel (bypasses the LLM).
+    enqueuePendingCards({
+      cards: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: [
+              {
+                type: "TextBlock",
+                text: "Microsoft Authentication Required",
+                weight: "Bolder",
+                size: "Medium",
+              },
+              {
+                type: "TextBlock",
+                text: `To use ${toolName}, please sign in:`,
+                wrap: true,
+              },
+              {
+                type: "TextBlock",
+                text: `**Code:** ${err.userCode}`,
+                wrap: true,
+                size: "Large",
+                fontType: "Monospace",
+              },
+            ],
+            actions: [
+              {
+                type: "Action.OpenUrl",
+                title: "Sign in at microsoft.com/devicelogin",
+                url: err.verificationUri,
+              },
+            ],
+          },
+        },
+      ],
+      conversationId: "auth-prompt",
+      text: `Authenticate at ${err.verificationUri} with code: ${err.userCode}`,
+      timestamp: Date.now(),
+    });
+
     return jsonResult({
       error: "auth_required",
       message:
-        `I need you to authenticate with Microsoft to use ${toolName}. ` +
-        `Go to ${err.verificationUri} and enter code: **${err.userCode}**. ` +
-        `Once done, try again and it should work.`,
+        `Authentication is required. A sign-in card has been sent to the user. ` +
+        `Wait for them to authenticate, then try the same request again. ` +
+        `Do NOT use web_fetch or other tools as a workaround.`,
       verificationUri: err.verificationUri,
       userCode: err.userCode,
     });
   }
   const message = err instanceof Error ? err.message : String(err);
+  console.error(`[copilot-studio] ${toolName} error:`, err instanceof Error ? err.stack : err);
   return jsonResult({
     error: "copilot_studio_error",
     message: `${toolName} failed: ${message}`,
   });
 }
 
+// Helper for string enums — avoid Type.Union per repo tool schema guidelines
+function stringEnum<T extends readonly string[]>(
+  values: T,
+  options: { description?: string } = {},
+) {
+  return Type.Unsafe<T[number]>({
+    type: "string",
+    enum: [...values],
+    ...options,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Web Search Tool
 // ---------------------------------------------------------------------------
-const WebSearchSchema = {
-  type: "object" as const,
-  properties: {
-    query: { type: "string" as const, description: "Search query string." },
-  },
-  required: ["query"],
-};
+const WebSearchSchema = Type.Object({
+  query: Type.String({ description: "Search query string." }),
+});
 
 export function createCopilotWebSearchTool(client: CopilotStudioClient) {
   return {
@@ -172,9 +225,12 @@ export function createCopilotWebSearchTool(client: CopilotStudioClient) {
       "Search the web for current information. Returns a concise answer with source URLs.",
     parameters: WebSearchSchema,
     execute: async (_toolCallId: string, args: unknown) => {
-      const params = args as Record<string, unknown>;
+      const params = args as { query?: string };
       try {
-        const query = readStringParam(params, "query", { required: true });
+        const query = typeof params.query === "string" ? params.query.trim() : "";
+        if (!query) {
+          throw new Error("query required");
+        }
 
         const prompt = [
           `Search the web for: ${query}`,
@@ -204,35 +260,23 @@ export function createCopilotWebSearchTool(client: CopilotStudioClient) {
 // ---------------------------------------------------------------------------
 // Email Tool
 // ---------------------------------------------------------------------------
-const EmailSchema = {
-  type: "object" as const,
-  properties: {
-    action: {
-      type: "string" as const,
-      enum: ["read", "search", "send"],
-      description:
-        "Action to perform: 'read' (recent emails), 'search' (find specific emails), 'send' (compose and send).",
-    },
-    query: {
-      type: "string" as const,
+const EMAIL_ACTIONS = ["read", "search", "send"] as const;
+
+const EmailSchema = Type.Object({
+  action: stringEnum(EMAIL_ACTIONS, {
+    description:
+      "Action to perform: 'read' (recent emails), 'search' (find specific emails), 'send' (compose and send).",
+  }),
+  query: Type.Optional(
+    Type.String({
       description:
         "For 'read': optional filter (e.g. 'unread', 'from John'). For 'search': search terms. Not used for 'send'.",
-    },
-    to: {
-      type: "string" as const,
-      description: "Recipient email address (required for 'send').",
-    },
-    subject: {
-      type: "string" as const,
-      description: "Email subject (required for 'send').",
-    },
-    body: {
-      type: "string" as const,
-      description: "Email body text (required for 'send').",
-    },
-  },
-  required: ["action"],
-};
+    }),
+  ),
+  to: Type.Optional(Type.String({ description: "Recipient email address (required for 'send')." })),
+  subject: Type.Optional(Type.String({ description: "Email subject (required for 'send')." })),
+  body: Type.Optional(Type.String({ description: "Email body text (required for 'send')." })),
+});
 
 export function createCopilotEmailTool(client: CopilotStudioClient) {
   return {
@@ -242,28 +286,43 @@ export function createCopilotEmailTool(client: CopilotStudioClient) {
       "Read, search, or send email via Microsoft 365. Use action='read' for recent mail, 'search' to find specific emails, 'send' to compose and send.",
     parameters: EmailSchema,
     execute: async (_toolCallId: string, args: unknown) => {
-      const params = args as Record<string, unknown>;
+      const params = args as {
+        action?: string;
+        query?: string;
+        to?: string;
+        subject?: string;
+        body?: string;
+      };
       try {
-        const action = readStringParam(params, "action", { required: true });
+        const action = typeof params.action === "string" ? params.action.trim() : "";
+        if (!action) {
+          throw new Error("action required");
+        }
         let prompt: string;
 
         switch (action) {
           case "read": {
-            const query = readStringParam(params, "query");
+            const query = typeof params.query === "string" ? params.query.trim() : "";
             prompt = query
               ? `Check my recent emails. Filter: ${query}. List up to 5 with sender, subject, and a brief summary. Do not include full email bodies.`
               : "Check my recent emails. List up to 5 with sender, subject, and a brief summary. Do not include full email bodies.";
             break;
           }
           case "search": {
-            const query = readStringParam(params, "query", { required: true });
+            const query = typeof params.query === "string" ? params.query.trim() : "";
+            if (!query) {
+              throw new Error("query required for search");
+            }
             prompt = `Search my emails for: ${query}. List up to 5 matches with sender, subject, date, and a brief summary. Do not include full email bodies.`;
             break;
           }
           case "send": {
-            const to = readStringParam(params, "to", { required: true });
-            const subject = readStringParam(params, "subject", { required: true });
-            const body = readStringParam(params, "body", { required: true });
+            const to = typeof params.to === "string" ? params.to.trim() : "";
+            const subject = typeof params.subject === "string" ? params.subject.trim() : "";
+            const body = typeof params.body === "string" ? params.body.trim() : "";
+            if (!to) throw new Error("to required");
+            if (!subject) throw new Error("subject required");
+            if (!body) throw new Error("body required");
             prompt = `Send an email to ${to} with subject "${subject}" and body:\n\n${body}\n\nConfirm when sent.`;
             break;
           }
@@ -291,40 +350,35 @@ export function createCopilotEmailTool(client: CopilotStudioClient) {
 // ---------------------------------------------------------------------------
 // Calendar Tool
 // ---------------------------------------------------------------------------
-const CalendarSchema = {
-  type: "object" as const,
-  properties: {
-    action: {
-      type: "string" as const,
-      enum: ["check", "create", "search"],
-      description:
-        "Action to perform: 'check' (upcoming events), 'search' (find events), 'create' (new event).",
-    },
-    query: {
-      type: "string" as const,
+const CALENDAR_ACTIONS = ["check", "create", "search"] as const;
+
+const CalendarSchema = Type.Object({
+  action: stringEnum(CALENDAR_ACTIONS, {
+    description:
+      "Action to perform: 'check' (upcoming events), 'search' (find events), 'create' (new event).",
+  }),
+  query: Type.Optional(
+    Type.String({
       description:
         "For 'check': timeframe like 'today', 'tomorrow', 'this week'. For 'search': search terms. Not used for 'create'.",
-    },
-    title: {
-      type: "string" as const,
-      description: "Event title (required for 'create').",
-    },
-    datetime: {
-      type: "string" as const,
+    }),
+  ),
+  title: Type.Optional(Type.String({ description: "Event title (required for 'create')." })),
+  datetime: Type.Optional(
+    Type.String({
       description:
         "Event date/time in natural language, e.g. 'tomorrow at 2pm' (required for 'create').",
-    },
-    duration: {
-      type: "string" as const,
+    }),
+  ),
+  duration: Type.Optional(
+    Type.String({
       description: "Event duration, e.g. '30 minutes', '1 hour'. Defaults to 30 minutes.",
-    },
-    attendees: {
-      type: "string" as const,
-      description: "Comma-separated attendee email addresses.",
-    },
-  },
-  required: ["action"],
-};
+    }),
+  ),
+  attendees: Type.Optional(
+    Type.String({ description: "Comma-separated attendee email addresses." }),
+  ),
+});
 
 export function createCopilotCalendarTool(client: CopilotStudioClient) {
   return {
@@ -334,27 +388,44 @@ export function createCopilotCalendarTool(client: CopilotStudioClient) {
       "Check, search, or create calendar events via Microsoft 365. Use action='check' for upcoming events, 'search' to find specific events, 'create' to schedule a new event.",
     parameters: CalendarSchema,
     execute: async (_toolCallId: string, args: unknown) => {
-      const params = args as Record<string, unknown>;
+      const params = args as {
+        action?: string;
+        query?: string;
+        title?: string;
+        datetime?: string;
+        duration?: string;
+        attendees?: string;
+      };
       try {
-        const action = readStringParam(params, "action", { required: true });
+        const action = typeof params.action === "string" ? params.action.trim() : "";
+        if (!action) {
+          throw new Error("action required");
+        }
         let prompt: string;
 
         switch (action) {
           case "check": {
-            const query = readStringParam(params, "query") || "next 24 hours";
+            const query =
+              (typeof params.query === "string" ? params.query.trim() : "") || "next 24 hours";
             prompt = `Check my calendar for ${query}. List each event with time, title, and attendees. Be concise.`;
             break;
           }
           case "search": {
-            const query = readStringParam(params, "query", { required: true });
+            const query = typeof params.query === "string" ? params.query.trim() : "";
+            if (!query) {
+              throw new Error("query required for search");
+            }
             prompt = `Search my calendar for events matching: ${query}. List matching events with date, time, title, and attendees.`;
             break;
           }
           case "create": {
-            const title = readStringParam(params, "title", { required: true });
-            const datetime = readStringParam(params, "datetime", { required: true });
-            const duration = readStringParam(params, "duration") || "30 minutes";
-            const attendees = readStringParam(params, "attendees");
+            const title = typeof params.title === "string" ? params.title.trim() : "";
+            const datetime = typeof params.datetime === "string" ? params.datetime.trim() : "";
+            if (!title) throw new Error("title required");
+            if (!datetime) throw new Error("datetime required");
+            const duration =
+              (typeof params.duration === "string" ? params.duration.trim() : "") || "30 minutes";
+            const attendees = typeof params.attendees === "string" ? params.attendees.trim() : "";
             prompt = attendees
               ? `Create a calendar event: "${title}" at ${datetime}, duration ${duration}, with attendees: ${attendees}. Confirm when created.`
               : `Create a calendar event: "${title}" at ${datetime}, duration ${duration}. Confirm when created.`;

@@ -265,6 +265,9 @@ importers:
       '@azure/msal-node':
         specifier: ^2.16.3
         version: 2.16.3
+      '@sinclair/typebox':
+        specifier: 0.34.48
+        version: 0.34.48
 
   extensions/diagnostics-otel:
     dependencies:

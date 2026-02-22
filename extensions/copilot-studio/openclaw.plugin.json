@@ -23,6 +23,10 @@
         "type": "array",
         "items": { "type": "string" },
         "description": "OAuth scopes (default: CopilotStudio.Copilots.Invoke)"
+      },
+      "agentMode": {
+        "type": "boolean",
+        "description": "Register Copilot Studio as an agent provider (direct passthrough mode)"
       }
     },
     "required": ["directConnectUrl", "tenantId", "clientId"]
@@ -45,6 +49,10 @@
       "label": "OAuth Scopes",
       "help": "Override the default CopilotStudio.Copilots.Invoke scope",
       "advanced": true
+    },
+    "agentMode": {
+      "label": "Agent Mode",
+      "help": "Enable direct passthrough mode — Copilot Studio handles conversations directly instead of being called as a tool"
     }
   }
 }
