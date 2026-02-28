@@ -74,7 +74,7 @@ describe("resolveGatewayConnection", () => {
       setup: () => pickPrimaryLanIPv4.mockReturnValue("192.168.1.42"),
     },
   ])("uses loopback host when local bind is $label", ({ bind, setup }) => {
-    loadConfig.mockReturnValue({ gateway: { mode: "local", bind } });
+    loadConfig.mockReturnValue({ gateway: { mode: "local", bind, port: 18800 } });
     resolveGatewayPort.mockReturnValue(18800);
     setup();
 

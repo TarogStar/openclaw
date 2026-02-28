@@ -1,17 +1,18 @@
+import fsSync from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveOpenClawPackageRoot, resolveOpenClawPackageRootSync } from "./openclaw-root.js";
 
 type FakeFsEntry = { kind: "file"; content: string } | { kind: "dir" };
 
 const VITEST_FS_BASE = path.join(path.parse(process.cwd()).root, "__openclaw_vitest__");
 const FIXTURE_BASE = path.join(VITEST_FS_BASE, "openclaw-root");
 
-const state = vi.hoisted(() => ({
-  entries: new Map<string, FakeFsEntry>(),
-  realpaths: new Map<string, string>(),
-  realpathErrors: new Set<string>(),
-}));
+const entries = new Map<string, FakeFsEntry>();
+const realpaths = new Map<string, string>();
+const realpathErrors = new Set<string>();
 
 const abs = (p: string) => path.resolve(p);
 const fx = (...parts: string[]) => path.join(FIXTURE_BASE, ...parts);
@@ -22,89 +23,72 @@ const isFixturePath = (p: string) => {
 };
 
 function setFile(p: string, content = "") {
-  state.entries.set(abs(p), { kind: "file", content });
+  entries.set(abs(p), { kind: "file", content });
 }
 
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-  const wrapped = {
-    ...actual,
-    existsSync: (p: string) =>
-      isFixturePath(p) ? state.entries.has(abs(p)) : actual.existsSync(p),
-    readFileSync: (p: string, encoding?: unknown) => {
-      if (!isFixturePath(p)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return actual.readFileSync(p as any, encoding as any) as unknown;
-      }
-      const entry = state.entries.get(abs(p));
-      if (!entry || entry.kind !== "file") {
-        throw new Error(`ENOENT: no such file, open '${p}'`);
-      }
-      return encoding ? entry.content : Buffer.from(entry.content, "utf-8");
-    },
-    statSync: (p: string) => {
-      if (!isFixturePath(p)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return actual.statSync(p as any) as unknown;
-      }
-      const entry = state.entries.get(abs(p));
-      if (!entry) {
-        throw new Error(`ENOENT: no such file or directory, stat '${p}'`);
-      }
-      return {
-        isFile: () => entry.kind === "file",
-        isDirectory: () => entry.kind === "dir",
-      };
-    },
-    realpathSync: (p: string) =>
-      isFixturePath(p)
-        ? (() => {
-            const resolved = abs(p);
-            if (state.realpathErrors.has(resolved)) {
-              throw new Error(`ENOENT: no such file or directory, realpath '${p}'`);
-            }
-            return state.realpaths.get(resolved) ?? resolved;
-          })()
-        : actual.realpathSync(p),
-  };
-  return { ...wrapped, default: wrapped };
-});
+// Use vi.spyOn instead of vi.mock so the interception applies to every module
+// that holds a reference to the real node:fs / node:fs/promises objects
+// (vi.mock in vitest 4 + pool:"forks" does not reliably intercept node: builtins
+// for modules that captured the binding at import time).
 
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs/promises")>();
-  const wrapped = {
-    ...actual,
-    readFile: async (p: string, encoding?: unknown) => {
-      if (!isFixturePath(p)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (await actual.readFile(p as any, encoding as any)) as unknown;
-      }
-      const entry = state.entries.get(abs(p));
-      if (!entry || entry.kind !== "file") {
-        throw new Error(`ENOENT: no such file, open '${p}'`);
-      }
-      return entry.content;
-    },
-  };
-  return { ...wrapped, default: wrapped };
-});
+const origReadFileSync = fsSync.readFileSync;
+const origRealpathSync = fsSync.realpathSync;
+const origReadFile = fsPromises.readFile;
 
 describe("resolveOpenClawPackageRoot", () => {
-  let resolveOpenClawPackageRoot: typeof import("./openclaw-root.js").resolveOpenClawPackageRoot;
-  let resolveOpenClawPackageRootSync: typeof import("./openclaw-root.js").resolveOpenClawPackageRootSync;
-
-  beforeAll(async () => {
-    ({ resolveOpenClawPackageRoot, resolveOpenClawPackageRootSync } =
-      await import("./openclaw-root.js"));
-  });
-
   beforeEach(() => {
-    state.entries.clear();
-    state.realpaths.clear();
-    state.realpathErrors.clear();
+    entries.clear();
+    realpaths.clear();
+    realpathErrors.clear();
+
+    vi.spyOn(fsSync, "readFileSync").mockImplementation((p: unknown, encoding?: unknown) => {
+      const pStr = String(p);
+      if (!isFixturePath(pStr)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return origReadFileSync(p as any, encoding as any) as any;
+      }
+      const entry = entries.get(abs(pStr));
+      if (!entry || entry.kind !== "file") {
+        throw new Error(`ENOENT: no such file, open '${pStr}'`);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (encoding ? entry.content : Buffer.from(entry.content, "utf-8")) as any;
+    });
+
+    vi.spyOn(fsSync, "realpathSync").mockImplementation((p: unknown) => {
+      const pStr = String(p);
+      if (!isFixturePath(pStr)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return origRealpathSync(p as any) as any;
+      }
+      const resolved = abs(pStr);
+      if (realpathErrors.has(resolved)) {
+        throw new Error(`ENOENT: no such file or directory, realpath '${pStr}'`);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (realpaths.get(resolved) ?? resolved) as any;
+    });
+
+    vi.spyOn(fsPromises, "readFile").mockImplementation(async (p: unknown, encoding?: unknown) => {
+      const pStr = String(p);
+      if (!isFixturePath(pStr)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return origReadFile(p as any, encoding as any) as any;
+      }
+      const entry = entries.get(abs(pStr));
+      if (!entry || entry.kind !== "file") {
+        throw new Error(`ENOENT: no such file, open '${pStr}'`);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return entry.content as any;
+    });
   });
 
-  it("resolves package root from .bin argv1", async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("resolves package root from .bin argv1", () => {
     const project = fx("bin-scenario");
     const argv1 = path.join(project, "node_modules", ".bin", "openclaw");
     const pkgRoot = path.join(project, "node_modules", "openclaw");
@@ -113,27 +97,27 @@ describe("resolveOpenClawPackageRoot", () => {
     expect(resolveOpenClawPackageRootSync({ argv1 })).toBe(pkgRoot);
   });
 
-  it("resolves package root via symlinked argv1", async () => {
+  it("resolves package root via symlinked argv1", () => {
     const project = fx("symlink-scenario");
     const bin = path.join(project, "bin", "openclaw");
     const realPkg = path.join(project, "real-pkg");
-    state.realpaths.set(abs(bin), abs(path.join(realPkg, "openclaw.mjs")));
+    realpaths.set(abs(bin), abs(path.join(realPkg, "openclaw.mjs")));
     setFile(path.join(realPkg, "package.json"), JSON.stringify({ name: "openclaw" }));
 
     expect(resolveOpenClawPackageRootSync({ argv1: bin })).toBe(realPkg);
   });
 
-  it("falls back when argv1 realpath throws", async () => {
+  it("falls back when argv1 realpath throws", () => {
     const project = fx("realpath-throw-scenario");
     const argv1 = path.join(project, "node_modules", ".bin", "openclaw");
     const pkgRoot = path.join(project, "node_modules", "openclaw");
-    state.realpathErrors.add(abs(argv1));
+    realpathErrors.add(abs(argv1));
     setFile(path.join(pkgRoot, "package.json"), JSON.stringify({ name: "openclaw" }));
 
     expect(resolveOpenClawPackageRootSync({ argv1 })).toBe(pkgRoot);
   });
 
-  it("prefers moduleUrl candidates", async () => {
+  it("prefers moduleUrl candidates", () => {
     const pkgRoot = fx("moduleurl");
     setFile(path.join(pkgRoot, "package.json"), JSON.stringify({ name: "openclaw" }));
     const moduleUrl = pathToFileURL(path.join(pkgRoot, "dist", "index.js")).toString();
@@ -141,7 +125,7 @@ describe("resolveOpenClawPackageRoot", () => {
     expect(resolveOpenClawPackageRootSync({ moduleUrl })).toBe(pkgRoot);
   });
 
-  it("returns null for non-openclaw package roots", async () => {
+  it("returns null for non-openclaw package roots", () => {
     const pkgRoot = fx("not-openclaw");
     setFile(path.join(pkgRoot, "package.json"), JSON.stringify({ name: "not-openclaw" }));
 

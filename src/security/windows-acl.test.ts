@@ -1,14 +1,7 @@
+import os from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import type { WindowsAclEntry, WindowsAclSummary } from "./windows-acl.js";
-
-const MOCK_USERNAME = "MockUser";
-
-vi.mock("node:os", () => ({
-  default: { userInfo: () => ({ username: MOCK_USERNAME }) },
-  userInfo: () => ({ username: MOCK_USERNAME }),
-}));
-
-const {
+import {
   createIcaclsResetCommand,
   formatIcaclsResetCommand,
   formatWindowsAclSummary,
@@ -16,7 +9,14 @@ const {
   parseIcaclsOutput,
   resolveWindowsUserPrincipal,
   summarizeWindowsAcl,
-} = await import("./windows-acl.js");
+} from "./windows-acl.js";
+
+const MOCK_USERNAME = "MockUser";
+
+vi.spyOn(os, "userInfo").mockReturnValue({
+  ...os.userInfo(),
+  username: MOCK_USERNAME,
+});
 
 function aclEntry(params: {
   principal: string;

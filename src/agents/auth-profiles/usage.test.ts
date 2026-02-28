@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+// Module mocking via vi.mock is unreliable here due to module evaluation
+// ordering in Vitest forks pool: usage.ts may bind to the real store exports
+// before the mock takes effect. Instead, we spy on the already-imported store
+// module which mutates the live export binding in-place.
+import * as storeModule from "./store.js";
 import type { AuthProfileStore, ProfileUsageStats } from "./types.js";
 import {
   clearAuthProfileCooldown,
@@ -9,15 +14,8 @@ import {
   resolveProfileUnusableUntil,
   resolveProfileUnusableUntilForDisplay,
 } from "./usage.js";
-
-vi.mock("./store.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./store.js")>();
-  return {
-    ...original,
-    updateAuthProfileStoreWithLock: vi.fn().mockResolvedValue(null),
-    saveAuthProfileStore: vi.fn(),
-  };
-});
+vi.spyOn(storeModule, "updateAuthProfileStoreWithLock").mockResolvedValue(null);
+vi.spyOn(storeModule, "saveAuthProfileStore").mockReturnValue(undefined);
 
 function makeStore(usageStats: AuthProfileStore["usageStats"]): AuthProfileStore {
   return {

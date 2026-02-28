@@ -41,6 +41,35 @@ vi.mock("../gateway/client.js", () => ({
   },
 }));
 
+// The GatewayClient mock above may not propagate into call.ts's transitive import
+// (Vitest forks pool + ESM). Override callGateway to use the real config/URL resolution
+// but route through the mock GatewayClient so no real WebSocket connection is attempted.
+vi.mock("../gateway/call.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../gateway/call.js")>();
+  return {
+    ...actual,
+    callGateway: async <T = Record<string, unknown>>(opts: {
+      method: string;
+      url?: string;
+      token?: string;
+      password?: string;
+    }): Promise<T> => {
+      const details = actual.buildGatewayConnectionDetails({ url: opts.url });
+      const { loadConfig } = await import("../config/config.js");
+      const { resolveGatewayCredentialsFromConfig } = await import("../gateway/credentials.js");
+      const cfg = loadConfig();
+      const creds = resolveGatewayCredentialsFromConfig({ cfg, env: process.env });
+      const resolved = {
+        url: details.url,
+        token: opts.token ?? creds.token,
+        password: opts.password ?? creds.password,
+      };
+      gatewayClientCalls.push(resolved);
+      return { ok: true } as T;
+    },
+  };
+});
+
 vi.mock("./onboard-helpers.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./onboard-helpers.js")>();
   return {
