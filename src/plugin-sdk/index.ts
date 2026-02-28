@@ -197,7 +197,6 @@ export {
   MarkdownConfigSchema,
   MarkdownTableModeSchema,
   normalizeAllowFrom,
-  ReplyRuntimeConfigSchemaShape,
   requireOpenAllowFrom,
   TtsAutoSchema,
   TtsConfigSchema,
