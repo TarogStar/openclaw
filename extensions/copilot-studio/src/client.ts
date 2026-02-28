@@ -17,6 +17,8 @@ export type SSEActivity = {
   }>;
   name?: string;
   value?: unknown;
+  replyToId?: string;
+  from?: { id?: string; role?: number };
 };
 
 export type AdaptiveCard = {
@@ -318,6 +320,46 @@ export class CopilotStudioClient {
     }
 
     return { text, activities: allActivities, adaptiveCards, conversationId };
+  }
+
+  /**
+   * Send a generic activity (e.g. event/tool response) to an existing conversation.
+   */
+  async sendActivity(
+    conversationId: string,
+    activity: Record<string, unknown>,
+    timeoutMs = 120_000,
+  ): Promise<QueryResult> {
+    const token = await this.auth.getToken();
+    this.log(
+      `[copilot-studio] sendActivity: ${conversationId.slice(0, 12)}... type=${String(activity.type ?? "unknown")}`,
+    );
+
+    const url = this.getConversationsUrl(conversationId);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({ activity: { ...activity, conversation: { id: conversationId } } }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(`Copilot Studio API error (${res.status}): ${detail || res.statusText}`);
+      }
+
+      return await this.collectActivities(res, controller.signal, conversationId);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**
