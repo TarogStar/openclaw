@@ -587,7 +587,7 @@ export const FIELD_HELP: Record<string, string> = {
   "tools.message.broadcast.enabled": "Enable broadcast action (default: true).",
   "tools.web.search.enabled": "Enable the web_search tool (requires a provider API key).",
   "tools.web.search.provider":
-    'Search provider ("brave", "perplexity", "grok", "gemini", or "kimi"). Auto-detected from available API keys if omitted.',
+    'Search provider ("brave", "perplexity", "grok", "gemini", "kimi", or "copilot-studio"). Auto-detected from available API keys if omitted.',
   "tools.web.search.apiKey": "Brave Search API key (fallback: BRAVE_API_KEY env var).",
   "tools.web.search.maxResults": "Default number of results to return (1-10).",
   "tools.web.search.timeoutSeconds": "Timeout in seconds for web_search requests.",
@@ -627,6 +627,13 @@ export const FIELD_HELP: Record<string, string> = {
   "tools.web.fetch.firecrawl.maxAgeMs":
     "Firecrawl maxAge (ms) for cached results when supported by the API.",
   "tools.web.fetch.firecrawl.timeoutSeconds": "Timeout in seconds for Firecrawl requests.",
+  "tools.email.enabled": "Enable the email tool (requires a provider like copilot-studio).",
+  "tools.email.provider": 'Email provider (e.g. "copilot-studio").',
+  "tools.email.timeoutSeconds": "Timeout in seconds for email requests.",
+  "tools.email.cacheTtlMinutes": "Cache TTL in minutes for email results.",
+  "tools.calendar.enabled": "Enable the calendar tool (requires a provider like copilot-studio).",
+  "tools.calendar.provider": 'Calendar provider (e.g. "copilot-studio").',
+  "tools.calendar.timeoutSeconds": "Timeout in seconds for calendar requests.",
   models:
     "Model catalog root for provider definitions, merge/replace behavior, and optional Bedrock discovery integration. Keep provider definitions explicit and validated before relying on production failover paths.",
   "models.mode":
@@ -1316,6 +1323,10 @@ export const FIELD_HELP: Record<string, string> = {
     "Filesystem path to the iMessage bridge CLI binary used for send/receive operations. Set explicitly when the binary is not on PATH in service runtime environments.",
   "channels.msteams.configWrites":
     "Allow Microsoft Teams to write config in response to channel events/commands (default: true).",
+  "channels.msteams.execApprovals":
+    "Interactive Adaptive Card prompts for exec command approvals in Teams conversations.",
+  "channels.msteams.execApprovals.enabled":
+    "Send approval cards with Allow Once / Always Allow / Deny buttons when agents need to run shell commands (default: false).",
   "channels.modelByChannel":
     "Map provider -> channel id -> model override (values are provider/model or aliases).",
   ...IRC_FIELD_HELP,

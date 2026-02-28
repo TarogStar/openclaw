@@ -264,6 +264,7 @@ export const ToolsWebSearchSchema = z
         z.literal("grok"),
         z.literal("gemini"),
         z.literal("kimi"),
+        z.literal("copilot-studio"),
       ])
       .optional(),
     apiKey: z.string().optional().register(sensitive),
@@ -322,6 +323,25 @@ export const ToolsWebSchema = z
   .object({
     search: ToolsWebSearchSchema,
     fetch: ToolsWebFetchSchema,
+  })
+  .strict()
+  .optional();
+
+export const ToolsEmailSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    provider: z.literal("copilot-studio").optional(),
+    timeoutSeconds: z.number().int().positive().optional(),
+    cacheTtlMinutes: z.number().nonnegative().optional(),
+  })
+  .strict()
+  .optional();
+
+export const ToolsCalendarSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    provider: z.literal("copilot-studio").optional(),
+    timeoutSeconds: z.number().int().positive().optional(),
   })
   .strict()
   .optional();
@@ -711,6 +731,8 @@ export const ToolsSchema = z
   .object({
     ...CommonToolPolicyFields,
     web: ToolsWebSchema,
+    email: ToolsEmailSchema,
+    calendar: ToolsCalendarSchema,
     media: ToolsMediaSchema,
     links: ToolsLinksSchema,
     sessions: z
@@ -772,6 +794,13 @@ export const ToolsSchema = z
     sandbox: z
       .object({
         tools: ToolPolicySchema,
+      })
+      .strict()
+      .optional(),
+    lazyLoading: z
+      .object({
+        enabled: z.boolean().optional(),
+        coreTools: z.array(z.string()).optional(),
       })
       .strict()
       .optional(),

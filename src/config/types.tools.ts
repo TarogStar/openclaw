@@ -430,8 +430,8 @@ export type ToolsConfig = {
     search?: {
       /** Enable web search tool (default: true when API key is present). */
       enabled?: boolean;
-      /** Search provider ("brave", "perplexity", "grok", "gemini", or "kimi"). */
-      provider?: "brave" | "perplexity" | "grok" | "gemini" | "kimi";
+      /** Search provider ("brave", "perplexity", "grok", "gemini", "kimi", or "copilot-studio"). */
+      provider?: "brave" | "perplexity" | "grok" | "gemini" | "kimi" | "copilot-studio";
       /** Brave Search API key (optional; defaults to BRAVE_API_KEY env var). */
       apiKey?: string;
       /** Default search results count (1-10). */
@@ -508,6 +508,24 @@ export type ToolsConfig = {
       };
     };
   };
+  /** Email tool configuration (requires a plugin provider like copilot-studio). */
+  email?: {
+    enabled?: boolean;
+    /** Email provider (e.g. "copilot-studio"). */
+    provider?: "copilot-studio";
+    /** Timeout in seconds for email requests. */
+    timeoutSeconds?: number;
+    /** Cache TTL in minutes for email results. */
+    cacheTtlMinutes?: number;
+  };
+  /** Calendar tool configuration (requires a plugin provider like copilot-studio). */
+  calendar?: {
+    enabled?: boolean;
+    /** Calendar provider (e.g. "copilot-studio"). */
+    provider?: "copilot-studio";
+    /** Timeout in seconds for calendar requests. */
+    timeoutSeconds?: number;
+  };
   media?: MediaToolsConfig;
   links?: LinkToolsConfig;
   /** Message tool configuration. */
@@ -571,6 +589,16 @@ export type ToolsConfig = {
   fs?: FsToolsConfig;
   /** Runtime loop detection for repetitive/ stuck tool-call patterns. */
   loopDetection?: ToolLoopDetectionConfig;
+  /** Lazy tool loading: only load schemas for core + explicitly requested tools. */
+  lazyLoading?: {
+    /** Enable lazy tool loading (default: false). */
+    enabled?: boolean;
+    /**
+     * Tool names always loaded with full schemas (default: fs/exec/coding essentials).
+     * tool_load is always implicitly included.
+     */
+    coreTools?: string[];
+  };
   /** Sub-agent tool policy defaults (deny wins). */
   subagents?: {
     /** Default model selection for spawned sub-agents (string or {primary,fallbacks}). */

@@ -46,6 +46,8 @@ export function buildEmbeddedSystemPrompt(params: {
   messageToolHints?: string[];
   sandboxInfo?: EmbeddedSandboxInfo;
   tools: AgentTool[];
+  /** Tool names that are deferred (lazy loading: listed in prompt but schemas not loaded). */
+  deferredToolNames?: Set<string>;
   modelAliasLines: string[];
   userTimezone: string;
   userTime?: string;
@@ -75,6 +77,7 @@ export function buildEmbeddedSystemPrompt(params: {
     sandboxInfo: params.sandboxInfo,
     toolNames: params.tools.map((tool) => tool.name),
     toolSummaries: buildToolSummaryMap(params.tools),
+    deferredToolNames: params.deferredToolNames,
     modelAliasLines: params.modelAliasLines,
     userTimezone: params.userTimezone,
     userTime: params.userTime,

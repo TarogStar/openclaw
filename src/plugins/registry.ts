@@ -1,8 +1,13 @@
 import path from "node:path";
+import type { StreamFn } from "@mariozechner/pi-agent-core";
 import { registerPluginAgentRunner, type PluginAgentRunnerFn } from "../agents/runner-registry.js";
+import { registerPluginStreamFn } from "../agents/stream-fn-registry.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import { registerPluginToolProvider } from "../agents/tools/plugin-tool-provider-registry.js";
+import type { PluginToolProviderFn } from "../agents/tools/plugin-tool-provider-registry.js";
 import type { ChannelDock } from "../channels/dock.js";
 import type { ChannelPlugin } from "../channels/plugins/types.js";
+import { callGateway } from "../gateway/call.js";
 import type {
   GatewayRequestHandler,
   GatewayRequestHandlers,
@@ -500,6 +505,18 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
       registerCommand: (command) => registerCommand(record, command),
       registerAgentRunner: (providerId: string, runner: PluginAgentRunnerFn) =>
         registerPluginAgentRunner(providerId, runner),
+      registerStreamFn: (apiType: string, streamFn: StreamFn) =>
+        registerPluginStreamFn(apiType, streamFn),
+      registerToolProvider: (toolId: string, providerId: string, fn: PluginToolProviderFn) =>
+        registerPluginToolProvider(toolId, providerId, fn),
+      resolveExecApproval: async (id: string, decision: "allow-once" | "allow-always" | "deny") => {
+        await callGateway({
+          method: "exec.approval.resolve",
+          params: { id, decision },
+          timeoutMs: 10_000,
+          scopes: ["operator.approvals"],
+        });
+      },
       resolvePath: (input: string) => resolveUserPath(input),
       on: (hookName, handler, opts) => registerTypedHook(record, hookName, handler, opts),
     };

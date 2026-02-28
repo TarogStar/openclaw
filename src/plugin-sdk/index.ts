@@ -101,9 +101,14 @@ export type {
   OpenClawPluginServiceContext,
   PluginAgentRunnerFn,
   PluginAgentRunnerParams,
+  PluginHookExecApprovalContext,
+  PluginHookExecApprovalRequestedEvent,
+  PluginHookExecApprovalResolvedEvent,
   PluginLogger,
+  PluginToolProviderFn,
   ProviderAuthContext,
   ProviderAuthResult,
+  StreamFn,
 } from "../plugins/types.js";
 export type {
   GatewayRequestHandler,

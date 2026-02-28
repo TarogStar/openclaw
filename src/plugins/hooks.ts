@@ -43,6 +43,9 @@ import type {
   PluginHookSubagentSpawningResult,
   PluginHookSubagentEndedEvent,
   PluginHookSubagentSpawnedEvent,
+  PluginHookExecApprovalRequestedEvent,
+  PluginHookExecApprovalResolvedEvent,
+  PluginHookExecApprovalContext,
   PluginHookToolContext,
   PluginHookToolResultPersistContext,
   PluginHookToolResultPersistEvent,
@@ -670,6 +673,32 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
   }
 
   // =========================================================================
+  // Exec Approval Hooks
+  // =========================================================================
+
+  /**
+   * Run exec_approval_requested hook.
+   * Runs in parallel (fire-and-forget) so channel plugins can display approval UI.
+   */
+  async function runExecApprovalRequested(
+    event: PluginHookExecApprovalRequestedEvent,
+    ctx: PluginHookExecApprovalContext,
+  ): Promise<void> {
+    return runVoidHook("exec_approval_requested", event, ctx);
+  }
+
+  /**
+   * Run exec_approval_resolved hook.
+   * Runs in parallel (fire-and-forget) so channel plugins can update approval UI.
+   */
+  async function runExecApprovalResolved(
+    event: PluginHookExecApprovalResolvedEvent,
+    ctx: PluginHookExecApprovalContext,
+  ): Promise<void> {
+    return runVoidHook("exec_approval_resolved", event, ctx);
+  }
+
+  // =========================================================================
   // Gateway Hooks
   // =========================================================================
 
@@ -741,6 +770,9 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     runSubagentDeliveryTarget,
     runSubagentSpawned,
     runSubagentEnded,
+    // Exec approval hooks
+    runExecApprovalRequested,
+    runExecApprovalResolved,
     // Gateway hooks
     runGatewayStart,
     runGatewayStop,
