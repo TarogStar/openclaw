@@ -53,6 +53,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.list.*.skills": "Agent Skill Filter",
   agents: "Agents",
   "agents.defaults": "Agent Defaults",
+  "agents.defaults.blockStreamingChunk.breakPreference": "Block Streaming Break Preference",
+  "agents.defaults.blockStreamingChunk.breakFallbacks": "Block Streaming Break Fallbacks",
   "agents.list": "Agent List",
   gateway: "Gateway",
   "gateway.port": "Gateway Port",
