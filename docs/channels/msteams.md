@@ -9,9 +9,9 @@ title: "Microsoft Teams"
 
 > "Abandon all hope, ye who enter here."
 
-Updated: 2026-01-21
+Updated: 2026-02-22
 
-Status: text + DM attachments are supported; channel/group file sending requires `sharePointSiteId` + Graph permissions (see [Sending files in group chats](#sending-files-in-group-chats)). Polls are sent via Adaptive Cards.
+Status: text + DM attachments are supported; channel/group file sending requires `sharePointSiteId` + Graph permissions (see [Sending files in group chats](#sending-files-in-group-chats)). Polls are sent via Adaptive Cards. Exec approvals use interactive Adaptive Cards. Subagent spawning from Teams is supported.
 
 ## Plugin required
 
@@ -475,6 +475,7 @@ Key settings (see `/gateway/configuration` for shared channel patterns):
 - `toolsBySender` keys should use explicit prefixes:
   `id:`, `e164:`, `username:`, `name:` (legacy unprefixed keys still map to `id:` only).
 - `channels.msteams.sharePointSiteId`: SharePoint site ID for file uploads in group chats/channels (see [Sending files in group chats](#sending-files-in-group-chats)).
+- `channels.msteams.execApprovals.enabled`: enable interactive Adaptive Card approval prompts for exec commands (see [Exec Approvals](#exec-approvals)).
 
 ## Routing & Sessions
 
@@ -599,6 +600,56 @@ Per-user sharing is more secure as only the chat participants can access the fil
 
 Uploaded files are stored in a `/OpenClawShared/` folder in the configured SharePoint site's default document library.
 
+## Ack Reactions
+
+When a message is received, OpenClaw can send a brief acknowledgment to let the user know the message was seen. Teams does not support native bot emoji reactions, so ack reactions are emulated by sending a temporary status message with the configured emoji. The message is automatically deleted once the reply starts streaming.
+
+Configure via the shared `messages.ackReaction` key or the channel-level override:
+
+```json5
+{
+  messages: {
+    ackReaction: "👀", // emoji to send (empty string disables)
+    ackReactionScope: "group-mentions", // when to ack: "all", "direct", "group-all", "group-mentions"
+  },
+}
+```
+
+Resolution order (highest to lowest):
+
+1. `channels.msteams.ackReaction` (not yet supported — use the global key)
+2. `messages.ackReaction`
+3. Agent identity emoji (`agents.list[].identity.emoji`)
+4. Default: `"👀"`
+
+## Tool Status Messages
+
+While the agent is working, Teams shows interim status messages such as _Checking email..._ or _Running command..._ that indicate which tool is active. These messages auto-delete when the next tool starts or the reply begins streaming.
+
+Status messages are **enabled by default**. Disable with:
+
+```json5
+{
+  messages: {
+    statusReactions: { enabled: false },
+  },
+}
+```
+
+Built-in tool labels:
+
+| Tool         | Status message           |
+| ------------ | ------------------------ |
+| `email`      | _Checking email..._      |
+| `web_search` | _Searching the web..._   |
+| `calendar`   | _Checking calendar..._   |
+| `read`       | _Reading file..._        |
+| `write`      | _Writing file..._        |
+| `exec`       | _Running command..._     |
+| `grep`       | _Searching files..._     |
+| `find`       | _Finding files..._       |
+| Other tools  | _Using \<tool name\>..._ |
+
 ## Polls (Adaptive Cards)
 
 OpenClaw sends Teams polls as Adaptive Cards (there is no native Teams poll API).
@@ -638,6 +689,57 @@ openclaw message send --channel msteams \
 ```
 
 See [Adaptive Cards documentation](https://adaptivecards.io/) for card schema and examples. For target format details, see [Target formats](#target-formats) below.
+
+## Exec Approvals
+
+When agents or subagents run shell commands, OpenClaw's exec approval system can require user approval before execution. With Teams, approval prompts are sent as interactive Adaptive Cards with **Allow Once**, **Always Allow**, and **Deny** buttons.
+
+### Setup
+
+Enable exec approvals in your config:
+
+```json5
+{
+  channels: {
+    msteams: {
+      execApprovals: { enabled: true },
+    },
+  },
+}
+```
+
+### How it works
+
+1. An agent (or subagent) tries to run a shell command that requires approval.
+2. The gateway fires a plugin hook; the MSTeams plugin sends an Adaptive Card to the most recent Teams conversation.
+3. The card shows the command, working directory, agent ID, and an expiry countdown.
+4. The user clicks one of the three buttons:
+   - **Allow Once** — permits this specific command.
+   - **Always Allow** — permits this command pattern going forward.
+   - **Deny** — blocks the command.
+5. The approval is resolved and the agent continues (or stops if denied).
+
+When enabled, the text-based approval forwarder is automatically skipped for MSTeams targets (cards replace the text fallback).
+
+### Limitations
+
+- The approval card is sent to the most recent conversation in the conversation store. If the bot has multiple active conversations, the card may not reach the intended user.
+- Cards expire based on the approval timeout. Once expired, the buttons no longer work.
+- The Teams monitor (webhook server) must be running to receive button clicks.
+
+## Subagent Support
+
+Teams supports spawning subagents from conversations. When a main agent spawns a subagent (e.g., a copilot) from a Teams-initiated session, the MSTeams plugin binds the subagent to the originating conversation so replies are routed back correctly.
+
+This works automatically when the subagent is configured with `thread: true` in the agent config. No additional MSTeams-specific configuration is needed.
+
+### How it works
+
+1. The main agent (running in a Teams session) spawns a subagent with `mode: "session"` and `thread: true`.
+2. The MSTeams subagent hook detects the spawn and records the conversation binding.
+3. The subagent runs independently and can use tools, execute commands (with [exec approvals](#exec-approvals) if enabled), and produce output.
+4. When the subagent completes, its result is delivered back to the originating Teams conversation.
+5. The binding is cleaned up after the subagent ends.
 
 ## Target formats
 
@@ -741,6 +843,27 @@ Bots have limited support in private channels:
 1. Use standard channels for bot interactions
 2. Use DMs - users can always message the bot directly
 3. Use Graph API for historical access (requires `ChannelMessage.Read.All`)
+
+## Health Endpoint
+
+The MSTeams provider exposes a `GET /health` endpoint for monitoring. It is registered **before** JWT authentication middleware so it can be called without credentials.
+
+```
+GET http://localhost:3978/health
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "channel": "msteams",
+  "port": 3978,
+  "startedAt": "2026-02-22T12:34:56.789Z"
+}
+```
+
+Use this for uptime monitors, load balancer health checks, or verifying the webhook server is running.
 
 ## Troubleshooting
 

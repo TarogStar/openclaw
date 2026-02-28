@@ -5,6 +5,7 @@ import {
 } from "../../infra/exec-approvals.js";
 import { buildSystemRunApprovalBindingV1 } from "../../infra/system-run-approval-binding.js";
 import { resolveSystemRunApprovalRequestContext } from "../../infra/system-run-approval-context.js";
+import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import type { ExecApprovalManager } from "../exec-approval-manager.js";
 import {
   ErrorCodes,
@@ -188,6 +189,32 @@ export function createExecApprovalHandlers(
         manager.expire(record.id, "auto-expire:no-approver-clients");
       }
 
+      // Fire plugin hooks so channel plugins (MSTeams, etc.) can display approval UI
+      const hookRunner = getGlobalHookRunner();
+      if (hookRunner?.hasHooks("exec_approval_requested")) {
+        void hookRunner
+          .runExecApprovalRequested(
+            {
+              id: record.id,
+              command: record.request.command,
+              cwd: record.request.cwd,
+              host: record.request.host,
+              agentId: record.request.agentId,
+              sessionKey: record.request.sessionKey,
+              security: record.request.security,
+              ask: record.request.ask,
+              expiresAtMs: record.expiresAtMs,
+              createdAtMs: record.createdAtMs,
+            },
+            { sessionKey: record.request.sessionKey },
+          )
+          .catch((err) => {
+            context.logGateway?.error?.(
+              `exec approvals: plugin hook request failed: ${String(err)}`,
+            );
+          });
+      }
+
       // Only send immediate "accepted" response when twoPhase is requested.
       // This preserves single-response semantics for existing callers.
       if (twoPhase) {
@@ -290,6 +317,19 @@ export function createExecApprovalHandlers(
         .catch((err) => {
           context.logGateway?.error?.(`exec approvals: forward resolve failed: ${String(err)}`);
         });
+
+      // Fire plugin hooks so channel plugins can update approval UI
+      const resolveHookRunner = getGlobalHookRunner();
+      if (resolveHookRunner?.hasHooks("exec_approval_resolved")) {
+        void resolveHookRunner
+          .runExecApprovalResolved({ id: p.id, decision, resolvedBy }, { sessionKey: null })
+          .catch((err) => {
+            context.logGateway?.error?.(
+              `exec approvals: plugin hook resolve failed: ${String(err)}`,
+            );
+          });
+      }
+
       respond(true, { ok: true }, undefined);
     },
   };

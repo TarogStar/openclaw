@@ -460,10 +460,10 @@ export async function sendMSTeamsMessages(params: {
       if (replyToId) {
         activity.replyToId = replyToId;
       }
-      const response = await sendWithRetry(
-        async () => await ctx.sendActivity(activity),
-        { messageIndex: idx, messageCount: messages.length },
-      );
+      const response = await sendWithRetry(async () => await ctx.sendActivity(activity), {
+        messageIndex: idx,
+        messageCount: messages.length,
+      });
       messageIds.push(extractMessageId(response) ?? "unknown");
     }
     return messageIds;

@@ -148,6 +148,26 @@ function shouldSkipDiscordForwarding(
   return Boolean(execApprovals?.enabled && (execApprovals.approvers?.length ?? 0) > 0);
 }
 
+// MSTeams has adaptive-card-based exec approvals; skip text fallback when enabled.
+function shouldSkipMSTeamsForwarding(
+  target: ExecApprovalForwardTarget,
+  cfg: OpenClawConfig,
+): boolean {
+  const channel = normalizeMessageChannel(target.channel) ?? target.channel;
+  if (channel !== "msteams") {
+    return false;
+  }
+  const msteams = cfg.channels?.msteams as { execApprovals?: { enabled?: boolean } } | undefined;
+  return Boolean(msteams?.execApprovals?.enabled);
+}
+
+function shouldSkipNativeApprovalChannel(
+  target: ExecApprovalForwardTarget,
+  cfg: OpenClawConfig,
+): boolean {
+  return shouldSkipDiscordForwarding(target, cfg) || shouldSkipMSTeamsForwarding(target, cfg);
+}
+
 function formatApprovalCommand(command: string): { inline: boolean; text: string } {
   if (!command.includes("\n") && !command.includes("`")) {
     return { inline: true, text: `\`${command}\`` };
@@ -352,7 +372,7 @@ export function createExecApprovalForwarder(
       config,
       request,
       resolveSessionTarget,
-    }).filter((target) => !shouldSkipDiscordForwarding(target, cfg));
+    }).filter((target) => !shouldSkipNativeApprovalChannel(target, cfg));
 
     if (filteredTargets.length === 0) {
       return false;
@@ -417,7 +437,7 @@ export function createExecApprovalForwarder(
           config,
           request,
           resolveSessionTarget,
-        }).filter((target) => !shouldSkipDiscordForwarding(target, cfg));
+        }).filter((target) => !shouldSkipNativeApprovalChannel(target, cfg));
       }
     }
     if (!targets || targets.length === 0) {

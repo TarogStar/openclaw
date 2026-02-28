@@ -115,4 +115,11 @@ export type MSTeamsConfig = {
   heartbeat?: ChannelHeartbeatVisibilityConfig;
   /** Outbound response prefix override for this channel/account. */
   responsePrefix?: string;
+  /** Exec approval configuration (adaptive cards for command approvals). */
+  execApprovals?: MSTeamsExecApprovalConfig;
+};
+
+export type MSTeamsExecApprovalConfig = {
+  /** Enable exec approval adaptive cards in Teams. Default: false. */
+  enabled?: boolean;
 };

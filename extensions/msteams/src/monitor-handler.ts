@@ -1,5 +1,6 @@
 import type { OpenClawConfig, RuntimeEnv } from "openclaw/plugin-sdk";
 import type { MSTeamsConversationStore } from "./conversation-store.js";
+import { getExecApprovalActionHandler, isExecApprovalAction } from "./exec-approvals.js";
 import { buildFileInfoCard, parseFileConsentInvoke, uploadToConsentUrl } from "./file-consent.js";
 import { normalizeMSTeamsConversationId } from "./inbound.js";
 import type { MSTeamsAdapter } from "./messenger.js";
@@ -165,11 +166,14 @@ async function handleFileConsentInvoke(
  * Handle adaptive card action invokes (user clicked a button on an adaptive card).
  * Stores the action data in a global queue so any plugin (e.g. copilot-studio)
  * can pick it up and continue the conversation.
+ *
+ * Returns "exec-approval" if the action was an exec approval (handled directly),
+ * true if it was a generic card action, false if not an invoke at all.
  */
 function handleAdaptiveCardInvoke(
   context: MSTeamsTurnContext,
   deps: MSTeamsMessageHandlerDeps,
-): boolean {
+): boolean | "exec-approval" {
   const activity = context.activity;
   if (activity.type !== "invoke" || activity.name !== "adaptiveCard/action") {
     return false;
@@ -183,6 +187,11 @@ function handleAdaptiveCardInvoke(
         : "unknown",
     from: activity.from?.id,
   });
+
+  // Exec approval card actions are handled directly — do not route as a user message.
+  if (isExecApprovalAction(actionData)) {
+    return "exec-approval";
+  }
 
   pushPendingCardInvoke(actionData);
 
@@ -214,6 +223,23 @@ export function registerMSTeamsHandlers<T extends MSTeamsActivityHandler>(
         // Handle adaptive card action invokes (e.g. consent card button clicks)
         if (ctx.activity?.name === "adaptiveCard/action") {
           const handled = handleAdaptiveCardInvoke(ctx, deps);
+          if (handled === "exec-approval") {
+            // Exec approval actions are resolved via the global handler —
+            // acknowledge the invoke but do NOT route as a user message.
+            const execHandler = getExecApprovalActionHandler();
+            if (execHandler) {
+              try {
+                await execHandler(ctx.activity.value as Record<string, unknown>);
+              } catch (err) {
+                deps.log.error?.(`exec approval invoke failed: ${String(err)}`);
+              }
+            }
+            await ctx.sendActivity({
+              type: "invokeResponse",
+              value: { status: 200, body: {} },
+            });
+            return;
+          }
           if (handled) {
             // Send 200 invoke response so Teams knows we handled it
             await ctx.sendActivity({
@@ -259,6 +285,20 @@ export function registerMSTeamsHandlers<T extends MSTeamsActivityHandler>(
           from: activity.from?.id,
           valueKeys: Object.keys(activity.value as Record<string, unknown>),
         });
+
+        // Exec approval card actions are resolved directly — no synthetic message needed.
+        if (isExecApprovalAction(activity.value)) {
+          const execHandler = getExecApprovalActionHandler();
+          if (execHandler) {
+            try {
+              await execHandler(activity.value as Record<string, unknown>);
+            } catch (err) {
+              deps.log.error?.(`exec approval action failed: ${String(err)}`);
+            }
+          }
+          await next();
+          return;
+        }
 
         pushPendingCardInvoke(activity.value);
 

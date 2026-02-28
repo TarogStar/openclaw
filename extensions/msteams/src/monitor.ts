@@ -9,6 +9,7 @@ import {
 import { createMSTeamsConversationStoreFs } from "./conversation-store-fs.js";
 import type { MSTeamsConversationStore } from "./conversation-store.js";
 import { formatUnknownError } from "./errors.js";
+import { setExecApprovalDeps } from "./exec-approvals.js";
 import type { MSTeamsAdapter } from "./messenger.js";
 import { registerMSTeamsHandlers, type MSTeamsActivityHandler } from "./monitor-handler.js";
 import { createMSTeamsPollStoreFs, type MSTeamsPollStore } from "./polls.js";
@@ -226,6 +227,13 @@ export async function monitorMSTeamsProvider(
   // Auth configuration - create early so adapter is available for deliverReplies
   const tokenProvider = new MsalTokenProvider(authConfig);
   const adapter = createMSTeamsAdapter(authConfig, sdk);
+
+  // Provide deps to exec approval hooks (registered eagerly in index.ts)
+  setExecApprovalDeps({
+    adapter: adapter as unknown as MSTeamsAdapter,
+    appId,
+    conversationStore,
+  });
 
   const handler = registerMSTeamsHandlers(new ActivityHandler() as MSTeamsActivityHandler, {
     cfg,
