@@ -345,6 +345,17 @@ async function handleFeedbackInvoke(
   return true;
 }
 
+const INVOKES_KEY = "__openclaw_pending_card_invokes";
+const SYNTHETIC_APPROVAL_TEXT =
+  "I approved the permission request. Please proceed with the action.";
+
+function pushGlobalInvoke(actionData: unknown): void {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const queue = (g[INVOKES_KEY] as Array<{ actionData: unknown; timestamp: number }>) ?? [];
+  queue.push({ actionData, timestamp: Date.now() });
+  g[INVOKES_KEY] = queue;
+}
+
 export function registerMSTeamsHandlers<T extends MSTeamsActivityHandler>(
   handler: T,
   deps: MSTeamsMessageHandlerDeps,
@@ -377,6 +388,34 @@ export function registerMSTeamsHandlers<T extends MSTeamsActivityHandler>(
         return;
       }
 
+      // Handle adaptive card Action.Execute invokes — store action data in global
+      // queue for the agent to pick up, send invoke response, and route as synthetic message.
+      if (ctx.activity?.type === "invoke" && ctx.activity?.name === "adaptiveCard/action") {
+        pushGlobalInvoke(ctx.activity.value);
+        await ctx.sendActivity({
+          type: "invokeResponse",
+          value: { status: 200, body: {} },
+        });
+
+        // Temporarily rewrite the activity so the message handler sees a normal text message
+        const origType = ctx.activity.type;
+        const origName = ctx.activity.name;
+        const origText = ctx.activity.text;
+        ctx.activity.type = "message";
+        ctx.activity.name = undefined as unknown as string;
+        ctx.activity.text = SYNTHETIC_APPROVAL_TEXT;
+        try {
+          await handleTeamsMessage(ctx);
+        } catch {
+          // best effort
+        } finally {
+          ctx.activity.type = origType;
+          ctx.activity.name = origName;
+          ctx.activity.text = origText;
+        }
+        return;
+      }
+
       // Handle feedback invokes (thumbs up/down on AI-generated messages).
       // Just return after handling — the process() handler sends HTTP 200 automatically.
       // Do NOT call sendActivity with invokeResponse; our custom adapter would POST
@@ -393,10 +432,30 @@ export function registerMSTeamsHandlers<T extends MSTeamsActivityHandler>(
   }
 
   handler.onMessage(async (context, next) => {
-    try {
-      await handleTeamsMessage(context as MSTeamsTurnContext);
-    } catch (err) {
-      deps.runtime.error?.(`msteams handler failed: ${String(err)}`);
+    const ctx = context as MSTeamsTurnContext;
+    const text = ctx.activity?.text ?? "";
+    const value = ctx.activity?.value;
+    const isActionSubmit =
+      (!text || !text.trim()) && value != null && typeof value === "object";
+
+    if (isActionSubmit) {
+      // Adaptive card Action.Submit — store in global queue and route as synthetic message
+      pushGlobalInvoke(value);
+      const origText = ctx.activity.text;
+      ctx.activity.text = SYNTHETIC_APPROVAL_TEXT;
+      try {
+        await handleTeamsMessage(ctx);
+      } catch (err) {
+        deps.runtime.error?.(`msteams handler failed: ${String(err)}`);
+      } finally {
+        ctx.activity.text = origText;
+      }
+    } else {
+      try {
+        await handleTeamsMessage(ctx);
+      } catch (err) {
+        deps.runtime.error?.(`msteams handler failed: ${String(err)}`);
+      }
     }
     await next();
   });
@@ -446,6 +505,30 @@ export function registerMSTeamsHandlers<T extends MSTeamsActivityHandler>(
           deps.log.debug?.("skipping welcome (disabled by config or conversation type)");
         }
       } else {
+        // Non-bot member added — seed conversation reference for proactive messaging
+        try {
+          const convId = ctx.activity?.conversation?.id;
+          if (convId) {
+            await deps.conversationStore.upsert(convId, {
+              user: {
+                id: ctx.activity?.from?.id,
+                name: ctx.activity?.from?.name,
+                aadObjectId: ctx.activity?.from?.aadObjectId,
+              },
+              agent: ctx.activity?.recipient
+                ? { id: ctx.activity.recipient.id, name: ctx.activity.recipient.name }
+                : undefined,
+              conversation: {
+                id: convId,
+                conversationType: ctx.activity?.conversation?.conversationType,
+                tenantId: ctx.activity?.conversation?.tenantId,
+              },
+              serviceUrl: ctx.activity?.serviceUrl,
+            });
+          }
+        } catch (err) {
+          deps.log.debug?.("failed to save conversation reference", { error: String(err) });
+        }
         deps.log.debug?.("member added", { member: member.id });
       }
     }

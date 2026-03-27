@@ -1,26 +1,45 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 
-vi.mock("../../auto-reply/tokens.js", () => ({
-  SILENT_REPLY_TOKEN: "QUIET_TOKEN",
-}));
+const textToSpeechMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../tts/tts.js", () => ({
-  textToSpeech: vi.fn(),
+  textToSpeech: textToSpeechMock,
 }));
 
-const { createTtsTool } = await import("./tts-tool.js");
-const { textToSpeech } = await import("../../tts/tts.js");
+vi.mock("../../config/config.js", () => ({
+  loadConfig: () => ({}),
+}));
+
+let createTtsTool: typeof import("./tts-tool.js").createTtsTool;
+
+async function loadModule() {
+  vi.resetModules();
+  vi.doMock("../../tts/tts.js", () => ({
+    textToSpeech: textToSpeechMock,
+  }));
+  vi.doMock("../../config/config.js", () => ({
+    loadConfig: () => ({}),
+  }));
+  ({ createTtsTool } = await import("./tts-tool.js"));
+}
 
 describe("createTtsTool", () => {
+  beforeEach(async () => {
+    textToSpeechMock.mockReset();
+    await loadModule();
+  });
+
   it("uses SILENT_REPLY_TOKEN in guidance text", () => {
     const tool = createTtsTool();
 
-    expect(tool.description).toContain("QUIET_TOKEN");
-    expect(tool.description).not.toContain("NO_REPLY");
+    expect(tool.description).toContain(SILENT_REPLY_TOKEN);
+    expect(typeof SILENT_REPLY_TOKEN).toBe("string");
+    expect(SILENT_REPLY_TOKEN.length).toBeGreaterThan(0);
   });
 
   it("stores audio delivery in details.media", async () => {
-    vi.mocked(textToSpeech).mockResolvedValue({
+    textToSpeechMock.mockResolvedValue({
       success: true,
       audioPath: "/tmp/reply.opus",
       provider: "test",

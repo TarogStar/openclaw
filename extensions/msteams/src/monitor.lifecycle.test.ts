@@ -48,13 +48,15 @@ vi.mock("express", () => {
   });
 
   const factory = () => ({
+    get: vi.fn(),
     use: vi.fn(),
     post: vi.fn(),
-    listen: vi.fn((_port: number) => {
-      const server = new EventEmitter() as FakeServer;
+    listen: vi.fn((_port: number, cb?: () => void) => {
+      const server = new EventEmitter() as FakeServer & { closeAllConnections: () => void };
       server.setTimeout = vi.fn((_msecs: number) => server);
       server.requestTimeout = 0;
       server.headersTimeout = 0;
+      server.closeAllConnections = vi.fn();
       server.close = (callback?: (err?: Error | null) => void) => {
         queueMicrotask(() => {
           server.emit("close");
@@ -63,10 +65,13 @@ vi.mock("express", () => {
       };
       queueMicrotask(() => {
         if (expressControl.mode.value === "error") {
-          server.emit("error", new Error("listen EADDRINUSE"));
+          const err = new Error("listen EADDRINUSE") as Error & { code?: string };
+          err.code = "EADDRINUSE";
+          server.emit("error", err);
           return;
         }
         server.emit("listening");
+        cb?.();
       });
       return server;
     }),
@@ -97,6 +102,7 @@ const loadMSTeamsSdkWithAuth = vi.hoisted(() =>
         () => (_req: unknown, _res: unknown, next: ((err?: unknown) => void) | undefined) =>
           next?.(),
     },
+    app: {},
     authConfig: {},
   })),
 );
