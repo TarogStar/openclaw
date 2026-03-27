@@ -66,4 +66,8 @@ export type EmbeddedRunAttemptResult = {
   clientToolCall?: { name: string; params: Record<string, unknown> };
   /** True when sessions_yield tool was called during this attempt. */
   yieldDetected?: boolean;
+  /** Tool names requested via tool_load (lazy loading). */
+  toolLoadRequested?: string[];
+  /** True when the attempt was aborted intentionally by a lazy-loading stub. */
+  toolLoadAborted?: boolean;
 };

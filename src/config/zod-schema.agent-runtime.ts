@@ -356,6 +356,25 @@ export const ToolsWebSchema = z
   .strict()
   .optional();
 
+export const ToolsEmailSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    provider: z.literal("copilot-studio").optional(),
+    timeoutSeconds: z.number().int().positive().optional(),
+    cacheTtlMinutes: z.number().nonnegative().optional(),
+  })
+  .strict()
+  .optional();
+
+export const ToolsCalendarSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    provider: z.literal("copilot-studio").optional(),
+    timeoutSeconds: z.number().int().positive().optional(),
+  })
+  .strict()
+  .optional();
+
 export const ToolProfileSchema = z
   .union([z.literal("minimal"), z.literal("coding"), z.literal("messaging"), z.literal("full")])
   .optional();
@@ -790,6 +809,8 @@ export const ToolsSchema = z
   .object({
     ...CommonToolPolicyFields,
     web: ToolsWebSchema,
+    email: ToolsEmailSchema,
+    calendar: ToolsCalendarSchema,
     media: ToolsMediaSchema,
     links: ToolsLinksSchema,
     sessions: z
@@ -866,6 +887,13 @@ export const ToolsSchema = z
           })
           .strict()
           .optional(),
+      })
+      .strict()
+      .optional(),
+    lazyLoading: z
+      .object({
+        enabled: z.boolean().optional(),
+        coreTools: z.array(z.string()).optional(),
       })
       .strict()
       .optional(),

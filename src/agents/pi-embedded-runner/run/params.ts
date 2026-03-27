@@ -129,4 +129,6 @@ export type RunEmbeddedPiAgentParams = {
    * where transient service pressure is often model-scoped.
    */
   allowTransientCooldownProbe?: boolean;
+  /** Tool names loaded via tool_load in a previous attempt (run-scoped, accumulates). */
+  loadedToolNames?: string[];
 };

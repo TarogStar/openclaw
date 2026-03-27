@@ -1038,6 +1038,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                     "github-copilot",
                     "bedrock-converse-stream",
                     "ollama",
+                    "copilot-studio",
                   ],
                 },
                 injectNumCtxForOpenAICompat: {
@@ -1142,6 +1143,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                           "github-copilot",
                           "bedrock-converse-stream",
                           "ollama",
+                          "copilot-studio",
                         ],
                       },
                       reasoning: {
@@ -2551,6 +2553,25 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                         const: "sentence",
                       },
                     ],
+                  },
+                  breakFallbacks: {
+                    type: "array",
+                    items: {
+                      anyOf: [
+                        {
+                          type: "string",
+                          const: "paragraph",
+                        },
+                        {
+                          type: "string",
+                          const: "newline",
+                        },
+                        {
+                          type: "string",
+                          const: "sentence",
+                        },
+                      ],
+                    },
                   },
                 },
                 additionalProperties: false,
@@ -5634,6 +5655,46 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
             },
             additionalProperties: false,
           },
+          email: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+              },
+              provider: {
+                type: "string",
+                const: "copilot-studio",
+              },
+              timeoutSeconds: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 9007199254740991,
+              },
+              cacheTtlMinutes: {
+                type: "number",
+                minimum: 0,
+              },
+            },
+            additionalProperties: false,
+          },
+          calendar: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+              },
+              provider: {
+                type: "string",
+                const: "copilot-studio",
+              },
+              timeoutSeconds: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 9007199254740991,
+              },
+            },
+            additionalProperties: false,
+          },
           media: {
             type: "object",
             properties: {
@@ -7271,6 +7332,21 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                   },
                 },
                 additionalProperties: false,
+              },
+            },
+            additionalProperties: false,
+          },
+          lazyLoading: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+              },
+              coreTools: {
+                type: "array",
+                items: {
+                  type: "string",
+                },
               },
             },
             additionalProperties: false,
@@ -11828,6 +11904,16 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       help: "Shared default settings inherited by agents unless overridden per entry in agents.list. Use defaults to enforce consistent baseline behavior and reduce duplicated per-agent configuration.",
       tags: ["advanced"],
     },
+    "agents.defaults.blockStreamingChunk.breakPreference": {
+      label: "Block Streaming Break Preference",
+      help: "Preferred break type for block streaming chunks (paragraph | newline | sentence). Default: paragraph.",
+      tags: ["advanced"],
+    },
+    "agents.defaults.blockStreamingChunk.breakFallbacks": {
+      label: "Block Streaming Break Fallbacks",
+      help: 'Ordered list of additional break types to try before whitespace fallback (e.g. ["newline", "sentence"]). Default: paragraph mode falls back to newline then sentence; others have no fallback.',
+      tags: ["reliability"],
+    },
     "agents.list": {
       label: "Agent List",
       help: "Explicit list of configured agents with IDs and optional overrides for model, tools, identity, and workspace. Keep IDs stable over time so bindings, approvals, and session routing remain deterministic.",
@@ -12632,7 +12718,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
     },
     "tools.web.search.maxResults": {
       label: "Web Search Max Results",
-      help: "Number of results to return (1-10).",
+      help: "Default number of results to return (1-10).",
       tags: ["performance", "tools"],
     },
     "tools.web.search.timeoutSeconds": {
@@ -12674,6 +12760,41 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       label: "Web Fetch Cache TTL (min)",
       help: "Cache TTL in minutes for web_fetch results.",
       tags: ["performance", "storage", "tools"],
+    },
+    "tools.email.enabled": {
+      label: "Enable Email Tool",
+      help: "Enable the email tool (requires a provider like copilot-studio).",
+      tags: ["tools"],
+    },
+    "tools.email.provider": {
+      label: "Email Provider",
+      help: 'Email provider (e.g. "copilot-studio").',
+      tags: ["tools"],
+    },
+    "tools.email.timeoutSeconds": {
+      label: "Email Timeout (sec)",
+      help: "Timeout in seconds for email requests.",
+      tags: ["performance", "tools"],
+    },
+    "tools.email.cacheTtlMinutes": {
+      label: "Email Cache TTL (min)",
+      help: "Cache TTL in minutes for email results.",
+      tags: ["performance", "storage", "tools"],
+    },
+    "tools.calendar.enabled": {
+      label: "Enable Calendar Tool",
+      help: "Enable the calendar tool (requires a provider like copilot-studio).",
+      tags: ["tools"],
+    },
+    "tools.calendar.provider": {
+      label: "Calendar Provider",
+      help: 'Calendar provider (e.g. "copilot-studio").',
+      tags: ["tools"],
+    },
+    "tools.calendar.timeoutSeconds": {
+      label: "Calendar Timeout (sec)",
+      help: "Timeout in seconds for calendar requests.",
+      tags: ["performance", "tools"],
     },
     "tools.web.fetch.maxRedirects": {
       label: "Web Fetch Max Redirects",
@@ -15191,6 +15312,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       help: "Plugin entry name inside the source marketplace, used for later updates.",
       tags: ["advanced"],
     },
+    "tools.web.search.apiKey": {
+      help: "Search API key (fallback: BRAVE_API_KEY env var).",
+      tags: ["security", "auth", "tools"],
+      sensitive: true,
+    },
     "models.providers.*.headers.*": {
       sensitive: true,
       tags: ["security", "models"],
@@ -15222,10 +15348,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
     "agents.list[].sandbox.ssh.knownHostsData": {
       sensitive: true,
       tags: ["security", "storage"],
-    },
-    "tools.web.search.apiKey": {
-      sensitive: true,
-      tags: ["security", "auth", "tools"],
     },
     "tools.web.search.brave.apiKey": {
       sensitive: true,

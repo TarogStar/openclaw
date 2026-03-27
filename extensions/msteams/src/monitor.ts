@@ -10,6 +10,7 @@ import {
 import { createMSTeamsConversationStoreFs } from "./conversation-store-fs.js";
 import type { MSTeamsConversationStore } from "./conversation-store.js";
 import { formatUnknownError } from "./errors.js";
+import { setExecApprovalDeps } from "./exec-approvals.js";
 import type { MSTeamsAdapter } from "./messenger.js";
 import { registerMSTeamsHandlers, type MSTeamsActivityHandler } from "./monitor-handler.js";
 import { createMSTeamsPollStoreFs, type MSTeamsPollStore } from "./polls.js";
@@ -236,6 +237,13 @@ export async function monitorMSTeamsProvider(
 
   const adapter = createMSTeamsAdapter(app, sdk);
 
+  // Provide deps to exec approval hooks (registered eagerly in index.ts)
+  setExecApprovalDeps({
+    adapter: adapter as unknown as MSTeamsAdapter,
+    appId,
+    conversationStore,
+  });
+
   // Build a simple ActivityHandler-compatible object
   const handler = buildActivityHandler();
   registerMSTeamsHandlers(handler, {
@@ -253,6 +261,12 @@ export async function monitorMSTeamsProvider(
 
   // Create Express server
   const expressApp = express.default();
+
+  // Health check endpoint (before JWT auth so it's publicly accessible for monitoring)
+  const startedAt = new Date().toISOString();
+  expressApp.get("/health", (_req: Request, res: Response) => {
+    res.json({ status: "ok", channel: "msteams", port, startedAt });
+  });
 
   // Cheap pre-parse auth gate: reject requests without a Bearer token before
   // spending CPU/memory on JSON body parsing. This prevents unauthenticated
@@ -319,30 +333,30 @@ export async function monitorMSTeamsProvider(
     fallback: "/api/messages",
   });
 
-  // Start listening and fail fast if bind/listen fails.
-  const httpServer = expressApp.listen(port);
-  await new Promise<void>((resolve, reject) => {
-    const onListening = () => {
-      httpServer.off("error", onError);
-      log.info(`msteams provider started on port ${port}`);
-      resolve();
-    };
-    const onError = (err: unknown) => {
-      httpServer.off("listening", onListening);
-      log.error("msteams server error", { error: String(err) });
-      reject(err);
-    };
-    httpServer.once("listening", onListening);
-    httpServer.once("error", onError);
-  });
+  // Start listening. The returned promise resolves only after the server
+  // is actually bound so the channel manager doesn't interpret a premature
+  // resolve as "provider exited" and trigger an auto-restart loop that
+  // causes EADDRINUSE (see openclaw#22169).
+  const httpServer = await new Promise<ReturnType<typeof expressApp.listen>>(
+    (resolveServer, rejectServer) => {
+      const server = expressApp.listen(port, () => {
+        log.info(`msteams provider started on port ${port}`);
+        resolveServer(server);
+      });
+      server.on("error", (err) => {
+        const code = (err as NodeJS.ErrnoException).code;
+        log.error(`msteams server error: ${err.message}${code ? ` [code=${code}]` : ""}`);
+        if (code === "EADDRINUSE" || code === "EACCES") {
+          rejectServer(err);
+        }
+      });
+    },
+  );
   applyMSTeamsWebhookTimeouts(httpServer);
-
-  httpServer.on("error", (err) => {
-    log.error("msteams server error", { error: String(err) });
-  });
 
   const shutdown = async () => {
     log.info("shutting down msteams provider");
+    httpServer.closeAllConnections();
     return new Promise<void>((resolve) => {
       httpServer.close((err) => {
         if (err) {

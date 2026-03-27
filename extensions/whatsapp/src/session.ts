@@ -29,7 +29,7 @@ export {
   logWebSelfId,
   pickWebChannel,
   readWebSelfId,
-  WA_WEB_AUTH_DIR,
+  resolveDefaultWebAuthDir,
   webAuthExists,
 } from "./auth-store.js";
 

@@ -1019,6 +1019,85 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
   },
   {
+    dirName: "copilot-studio",
+    idHint: "copilot-studio",
+    source: {
+      source: "./index.ts",
+      built: "index.js",
+    },
+    packageName: "@openclaw/copilot-studio",
+    packageVersion: "0.1.0",
+    packageDescription: "OpenClaw Copilot Studio tool gateway plugin (web search, email, calendar)",
+    packageManifest: {
+      extensions: ["./index.ts"],
+      install: {
+        localPath: "extensions/copilot-studio",
+        defaultChoice: "local",
+      },
+    },
+    manifest: {
+      id: "copilot-studio",
+      configSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          directConnectUrl: {
+            type: "string",
+            description: "Copilot Studio Direct Connect API URL",
+          },
+          tenantId: {
+            type: "string",
+            description: "Azure AD tenant ID",
+          },
+          clientId: {
+            type: "string",
+            description: "Azure AD application (client) ID for device code auth",
+          },
+          scopes: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description: "OAuth scopes (default: CopilotStudio.Copilots.Invoke)",
+          },
+          agentMode: {
+            type: "boolean",
+            description: "Register Copilot Studio as an agent provider (direct passthrough mode)",
+          },
+        },
+        required: ["directConnectUrl", "tenantId", "clientId"],
+      },
+      name: "Copilot Studio Gateway",
+      description:
+        "Tool gateway to Microsoft Copilot Studio agents (web search, email, calendar via Microsoft 365)",
+      version: "0.1.0",
+      uiHints: {
+        directConnectUrl: {
+          label: "Direct Connect URL",
+          help: "The Copilot Studio Direct Connect API endpoint URL",
+          placeholder: "https://your-env.api.copilot.microsoft.com/...",
+        },
+        tenantId: {
+          label: "Tenant ID",
+          help: "Azure AD tenant ID for your organization",
+        },
+        clientId: {
+          label: "Client ID",
+          help: "Azure AD app registration client ID configured for device code flow",
+        },
+        scopes: {
+          label: "OAuth Scopes",
+          help: "Override the default CopilotStudio.Copilots.Invoke scope",
+          advanced: true,
+        },
+        agentMode: {
+          label: "Agent Mode",
+          help: "Enable direct passthrough mode — Copilot Studio handles conversations directly instead of being called as a tool",
+        },
+      },
+    },
+  },
+  {
     dirName: "deepgram",
     idHint: "deepgram",
     source: {
@@ -1594,6 +1673,25 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
                         const: "sentence",
                       },
                     ],
+                  },
+                  breakFallbacks: {
+                    type: "array",
+                    items: {
+                      anyOf: [
+                        {
+                          type: "string",
+                          const: "paragraph",
+                        },
+                        {
+                          type: "string",
+                          const: "newline",
+                        },
+                        {
+                          type: "string",
+                          const: "sentence",
+                        },
+                      ],
+                    },
                   },
                 },
                 additionalProperties: false,
@@ -2802,6 +2900,25 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
                               const: "sentence",
                             },
                           ],
+                        },
+                        breakFallbacks: {
+                          type: "array",
+                          items: {
+                            anyOf: [
+                              {
+                                type: "string",
+                                const: "paragraph",
+                              },
+                              {
+                                type: "string",
+                                const: "newline",
+                              },
+                              {
+                                type: "string",
+                                const: "sentence",
+                              },
+                            ],
+                          },
                         },
                       },
                       additionalProperties: false,
@@ -10163,6 +10280,15 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
                 minimum: 0,
                 maximum: 9007199254740991,
               },
+              execApprovals: {
+                type: "object",
+                properties: {
+                  enabled: {
+                    type: "boolean",
+                  },
+                },
+                additionalProperties: false,
+              },
             },
             required: ["dmPolicy", "groupPolicy"],
             additionalProperties: false,
@@ -14868,6 +14994,25 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
                       },
                     ],
                   },
+                  breakFallbacks: {
+                    type: "array",
+                    items: {
+                      anyOf: [
+                        {
+                          type: "string",
+                          const: "paragraph",
+                        },
+                        {
+                          type: "string",
+                          const: "newline",
+                        },
+                        {
+                          type: "string",
+                          const: "sentence",
+                        },
+                      ],
+                    },
+                  },
                 },
                 additionalProperties: false,
               },
@@ -15818,6 +15963,25 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
                               const: "sentence",
                             },
                           ],
+                        },
+                        breakFallbacks: {
+                          type: "array",
+                          items: {
+                            anyOf: [
+                              {
+                                type: "string",
+                                const: "paragraph",
+                              },
+                              {
+                                type: "string",
+                                const: "newline",
+                              },
+                              {
+                                type: "string",
+                                const: "sentence",
+                              },
+                            ],
+                          },
                         },
                       },
                       additionalProperties: false,

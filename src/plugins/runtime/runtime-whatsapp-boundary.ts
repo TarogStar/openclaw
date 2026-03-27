@@ -198,8 +198,8 @@ export function pickWebChannel(
   return getLightExport("pickWebChannel")(...args);
 }
 
-export function resolveWaWebAuthDir(): WhatsAppLightModule["WA_WEB_AUTH_DIR"] {
-  return getLightExport("WA_WEB_AUTH_DIR");
+export function resolveWaWebAuthDir(): string {
+  return getLightExport("resolveDefaultWebAuthDir")();
 }
 
 export async function handleWhatsAppAction(

@@ -133,6 +133,13 @@ export type MSTeamsConfig = {
   feedbackReflection?: boolean;
   /** Minimum interval (ms) between reflections per session. Default: 300000 (5 min). */
   feedbackReflectionCooldownMs?: number;
+  /** Exec approval configuration (adaptive cards for command approvals). */
+  execApprovals?: MSTeamsExecApprovalConfig;
+};
+
+export type MSTeamsExecApprovalConfig = {
+  /** Enable exec approval adaptive cards in Teams. Default: false. */
+  enabled?: boolean;
 };
 
 declare module "./types.channels.js" {

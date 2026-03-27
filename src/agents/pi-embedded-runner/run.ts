@@ -86,6 +86,10 @@ import { describeUnknownError } from "./utils.js";
 
 type ApiKeyInfo = ResolvedProviderAuth;
 
+// Session-level cache of lazy-loaded tools: persists across runs within the same session
+// so tools only need to be loaded once per session (until gateway restart).
+const sessionLoadedToolsCache = new Map<string, string[]>();
+
 export async function runEmbeddedPiAgent(
   params: RunEmbeddedPiAgentParams,
 ): Promise<EmbeddedPiRunResult> {
@@ -284,6 +288,16 @@ export async function runEmbeddedPiAgent(
       let bootstrapPromptWarningSignaturesSeen =
         params.bootstrapPromptWarningSignaturesSeen ??
         (params.bootstrapPromptWarningSignature ? [params.bootstrapPromptWarningSignature] : []);
+      // Lazy tool loading state: accumulates tool names loaded via tool_load across retries.
+      // Initialize from session cache so tools loaded in previous messages stay loaded.
+      const sessionCacheKey = params.sessionKey ?? params.sessionId;
+      const cachedLoadedTools = sessionLoadedToolsCache.get(sessionCacheKey);
+      let runScopedLoadedTools: string[] | undefined = cachedLoadedTools
+        ? [...cachedLoadedTools]
+        : undefined;
+      let toolLoadRetryPrompt: string | undefined;
+      const MAX_TOOL_LOAD_RETRIES = 3;
+      let toolLoadRetries = 0;
       const usageAccumulator = createUsageAccumulator();
       let lastRunPromptUsage: ReturnType<typeof normalizeUsage> | undefined;
       let autoCompactionCount = 0;
@@ -433,8 +447,11 @@ export async function runEmbeddedPiAgent(
           attemptedThinking.add(thinkLevel);
           await fs.mkdir(resolvedWorkspace, { recursive: true });
 
+          // Use tool_load retry prompt if available, otherwise the original user prompt
+          const basePrompt = toolLoadRetryPrompt ?? params.prompt;
+          toolLoadRetryPrompt = undefined; // consume it
           const prompt =
-            provider === "anthropic" ? scrubAnthropicRefusalMagic(params.prompt) : params.prompt;
+            provider === "anthropic" ? scrubAnthropicRefusalMagic(basePrompt) : basePrompt;
 
           const attempt = await runEmbeddedAttempt({
             sessionId: params.sessionId,
@@ -511,6 +528,7 @@ export async function runEmbeddedPiAgent(
             bootstrapPromptWarningSignaturesSeen,
             bootstrapPromptWarningSignature:
               bootstrapPromptWarningSignaturesSeen[bootstrapPromptWarningSignaturesSeen.length - 1],
+            loadedToolNames: runScopedLoadedTools,
           });
 
           const {
@@ -1170,6 +1188,33 @@ export async function runEmbeddedPiAgent(
               });
             }
             logAssistantFailoverDecision("surface_error");
+          }
+
+          // Lazy tool loading: if a deferred tool stub was called, accumulate loaded tools,
+          // persist to session cache, and retry with the real tool schemas.
+          // Note: stubs intentionally abort the tool-use loop to stop the model from looping,
+          // so we check toolLoadAborted to allow retry even when aborted is true.
+          if (
+            attempt.toolLoadRequested?.length &&
+            (!aborted || attempt.toolLoadAborted) &&
+            toolLoadRetries < MAX_TOOL_LOAD_RETRIES
+          ) {
+            toolLoadRetries++;
+            runScopedLoadedTools = [
+              ...new Set([...(runScopedLoadedTools ?? []), ...attempt.toolLoadRequested]),
+            ];
+            // Persist to session cache so subsequent messages don't re-trigger loading
+            sessionLoadedToolsCache.set(sessionCacheKey, runScopedLoadedTools);
+            log.info(
+              `[lazy-loading] tool_load requested: ${attempt.toolLoadRequested.join(", ")} ` +
+                `(total loaded: ${runScopedLoadedTools.join(", ")}); retrying attempt ` +
+                `(${toolLoadRetries}/${MAX_TOOL_LOAD_RETRIES})`,
+            );
+            // Override prompt for retry: tell the LLM tools are now available
+            toolLoadRetryPrompt =
+              "[System] The tools you requested via tool_load are now loaded and available. " +
+              "Continue with the user's previous request.";
+            continue;
           }
 
           const usageMeta = buildUsageAgentMetaFields({

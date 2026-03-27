@@ -671,7 +671,8 @@ export const FIELD_HELP: Record<string, string> = {
   "tools.web.search.enabled": "Enable the web_search tool (requires a provider API key).",
   "tools.web.search.provider":
     "Search provider id. Auto-detected from available API keys if omitted.",
-  "tools.web.search.maxResults": "Number of results to return (1-10).",
+  "tools.web.search.apiKey": "Search API key (fallback: BRAVE_API_KEY env var).",
+  "tools.web.search.maxResults": "Default number of results to return (1-10).",
   "tools.web.search.timeoutSeconds": "Timeout in seconds for web_search requests.",
   "tools.web.search.cacheTtlMinutes": "Cache TTL in minutes for web_search results.",
   "tools.web.fetch.enabled": "Enable the web_fetch tool (lightweight HTTP fetch).",
@@ -694,6 +695,13 @@ export const FIELD_HELP: Record<string, string> = {
   "tools.web.fetch.firecrawl.maxAgeMs":
     "Firecrawl maxAge (ms) for cached results when supported by the API.",
   "tools.web.fetch.firecrawl.timeoutSeconds": "Timeout in seconds for Firecrawl requests.",
+  "tools.email.enabled": "Enable the email tool (requires a provider like copilot-studio).",
+  "tools.email.provider": 'Email provider (e.g. "copilot-studio").',
+  "tools.email.timeoutSeconds": "Timeout in seconds for email requests.",
+  "tools.email.cacheTtlMinutes": "Cache TTL in minutes for email results.",
+  "tools.calendar.enabled": "Enable the calendar tool (requires a provider like copilot-studio).",
+  "tools.calendar.provider": 'Calendar provider (e.g. "copilot-studio").',
+  "tools.calendar.timeoutSeconds": "Timeout in seconds for calendar requests.",
   models:
     "Model catalog root for provider definitions, merge/replace behavior, and optional Bedrock discovery integration. Keep provider definitions explicit and validated before relying on production failover paths.",
   "models.mode":
@@ -844,6 +852,10 @@ export const FIELD_HELP: Record<string, string> = {
     "Controls how fast older memory loses rank when temporal decay is enabled (half-life in days, default: 30). Lower values prioritize recent context more aggressively.",
   "agents.defaults.memorySearch.cache.enabled":
     "Caches computed chunk embeddings in SQLite so reindexing and incremental updates run faster (default: true). Keep this enabled unless investigating cache correctness or minimizing disk usage.",
+  "agents.defaults.blockStreamingChunk.breakPreference":
+    "Preferred break type for block streaming chunks (paragraph | newline | sentence). Default: paragraph.",
+  "agents.defaults.blockStreamingChunk.breakFallbacks":
+    'Ordered list of additional break types to try before whitespace fallback (e.g. ["newline", "sentence"]). Default: paragraph mode falls back to newline then sentence; others have no fallback.',
   memory: "Memory backend configuration (global).",
   "memory.backend":
     'Selects the global memory engine: "builtin" uses OpenClaw memory internals, while "qmd" uses the QMD sidecar pipeline. Keep "builtin" unless you intentionally operate QMD.',
@@ -1405,6 +1417,30 @@ export const FIELD_HELP: Record<string, string> = {
     'Per-agent override for heartbeat direct/DM delivery policy; use "block" for agents that should only send heartbeat alerts to non-DM destinations.',
   "channels.mattermost.configWrites":
     "Allow Mattermost to write config in response to channel events/commands (default: true).",
+  "channels.discord.configWrites":
+    "Allow Discord to write config in response to channel events/commands (default: true).",
+  "channels.discord.token":
+    "Discord bot token used for gateway and REST API authentication for this provider account. Keep this secret out of committed config and rotate immediately after any leak.",
+  "channels.discord.allowBots":
+    'Allow bot-authored messages to trigger Discord replies (default: false). Set "mentions" to only accept bot messages that mention the bot.',
+  "channels.discord.proxy":
+    "Proxy URL for Discord gateway + API requests (app-id lookup and allowlist resolution). Set per account via channels.discord.accounts.<id>.proxy.",
+  "channels.whatsapp.configWrites":
+    "Allow WhatsApp to write config in response to channel events/commands (default: true).",
+  "channels.signal.configWrites":
+    "Allow Signal to write config in response to channel events/commands (default: true).",
+  "channels.signal.account":
+    "Signal account identifier (phone/number handle) used to bind this channel config to a specific Signal identity. Keep this aligned with your linked device/session state.",
+  "channels.imessage.configWrites":
+    "Allow iMessage to write config in response to channel events/commands (default: true).",
+  "channels.imessage.cliPath":
+    "Filesystem path to the iMessage bridge CLI binary used for send/receive operations. Set explicitly when the binary is not on PATH in service runtime environments.",
+  "channels.msteams.configWrites":
+    "Allow Microsoft Teams to write config in response to channel events/commands (default: true).",
+  "channels.msteams.execApprovals":
+    "Interactive Adaptive Card prompts for exec command approvals in Teams conversations.",
+  "channels.msteams.execApprovals.enabled":
+    "Send approval cards with Allow Once / Always Allow / Deny buttons when agents need to run shell commands (default: false).",
   "channels.modelByChannel":
     "Map provider -> channel id -> model override (values are provider/model or aliases).",
   "messages.suppressToolErrors":

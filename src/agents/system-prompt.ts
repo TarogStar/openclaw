@@ -184,6 +184,8 @@ export function buildAgentSystemPrompt(params: {
   reasoningTagHint?: boolean;
   toolNames?: string[];
   toolSummaries?: Record<string, string>;
+  /** Tool names that are deferred (lazy loading: listed in prompt but schemas not loaded). */
+  deferredToolNames?: Set<string>;
   modelAliasLines?: string[];
   userTimezone?: string;
   userTime?: string;
@@ -314,6 +316,8 @@ export function buildAgentSystemPrompt(params: {
   const extraTools = Array.from(
     new Set(normalizedTools.filter((tool) => !toolOrder.includes(tool))),
   );
+  const deferredSet = params.deferredToolNames;
+  const hasDeferredTools = deferredSet && deferredSet.size > 0;
   const enabledTools = toolOrder.filter((tool) => availableTools.has(tool));
   const toolLines = enabledTools.map((tool) => {
     const summary = coreToolSummaries[tool] ?? externalToolSummaries.get(tool);
@@ -404,9 +408,9 @@ export function buildAgentSystemPrompt(params: {
     return "You are a personal assistant running inside OpenClaw.";
   }
 
-  const lines = [
-    "You are a personal assistant running inside OpenClaw.",
-    "",
+  // Tooling section built separately so it can be placed at the end of the prompt
+  // for KV cache optimization (stable prefix = faster prompt processing on llama.cpp).
+  const toolingSection = [
     "## Tooling",
     "Tool availability (filtered by policy):",
     "Tool names are case-sensitive. Call tools exactly as listed.",
@@ -430,6 +434,9 @@ export function buildAgentSystemPrompt(params: {
           "- subagents: list/steer/kill sub-agent runs",
           '- session_status: show usage/time/model state and answer "what model are we using?"',
         ].join("\n"),
+    hasDeferredTools
+      ? "Some tools may need a moment to load on first use. If a tool result says it is loading, STOP and end your response immediately. The tool will be ready in your next turn."
+      : "",
     "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
     `For long waits, avoid rapid poll loops: use ${execToolName} with enough yieldMs or ${processToolName}(action=poll, timeout=<ms>).`,
     "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
@@ -452,6 +459,11 @@ export function buildAgentSystemPrompt(params: {
     "When exec returns approval-pending, include the concrete /approve command from tool output (with allow-once|allow-always|deny) and do not ask for a different or rotated code.",
     "Treat allow-once as single-command only: if another elevated command needs approval, request a fresh /approve and do not claim prior approval covered it.",
     "When approvals are required, preserve and show the full command/script exactly as provided (including chained operators like &&, ||, |, ;, or multiline shells) so the user can approve what will actually run.",
+    "",
+  ];
+
+  const lines = [
+    "You are a personal assistant running inside OpenClaw.",
     "",
     ...safetySection,
     "## OpenClaw CLI Quick Reference",
@@ -653,6 +665,11 @@ export function buildAgentSystemPrompt(params: {
       "",
     );
   }
+
+  // Tooling section placed near end for KV cache optimization:
+  // stable prefix (identity, safety, workspace, project context) stays constant across turns,
+  // allowing llama.cpp to reuse KV cache. Only the tooling list changes when tools are loaded.
+  lines.push(...toolingSection);
 
   lines.push(
     "## Runtime",

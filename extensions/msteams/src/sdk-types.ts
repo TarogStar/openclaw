@@ -54,6 +54,8 @@ export type MSTeamsTurnContext = {
   sendActivities: (
     activities: Array<{ type: string } & Record<string, unknown>>,
   ) => Promise<unknown>;
+  /** Update an existing activity (e.g., edit a sent message). */
   updateActivity: (activity: object) => Promise<{ id?: string } | void>;
+  /** Delete a previously sent activity by its ID. */
   deleteActivity: (activityId: string) => Promise<void>;
 };

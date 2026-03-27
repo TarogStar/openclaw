@@ -1,5 +1,6 @@
 import { getChannelPlugin, normalizeChannelId } from "../../channels/plugins/index.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { BreakPreferenceType } from "../../config/types.base.js";
 import type { BlockStreamingCoalesceConfig } from "../../config/types.js";
 import { resolveAccountEntry } from "../../routing/account-lookup.js";
 import { normalizeAccountId } from "../../routing/session-key.js";
@@ -74,6 +75,7 @@ export type BlockStreamingChunking = {
   minChars: number;
   maxChars: number;
   breakPreference: "paragraph" | "newline" | "sentence";
+  breakFallbacks?: ("paragraph" | "newline" | "sentence")[];
   flushOnParagraph?: boolean;
 };
 
@@ -179,6 +181,7 @@ export function resolveBlockStreamingChunking(
     minChars,
     maxChars,
     breakPreference,
+    breakFallbacks: chunkCfg?.breakFallbacks,
     flushOnParagraph: chunkMode === "newline",
   };
 }
@@ -190,7 +193,8 @@ export function resolveBlockStreamingCoalescing(
   chunking?: {
     minChars: number;
     maxChars: number;
-    breakPreference: "paragraph" | "newline" | "sentence";
+    breakPreference: BreakPreferenceType;
+    breakFallbacks?: BreakPreferenceType[];
   },
 ): BlockStreamingCoalescing | undefined {
   const { providerKey, providerId, textLimit } = resolveProviderChunkContext(

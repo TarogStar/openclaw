@@ -7,6 +7,7 @@ import {
   DefaultResourceLoader,
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import {
   resolveTelegramInlineButtonsScope,
   resolveTelegramReactionLevel,
@@ -86,9 +87,12 @@ import {
   applySkillEnvOverridesFromSnapshot,
   resolveSkillsPromptForRun,
 } from "../../skills.js";
+import { getPluginStreamFn } from "../../stream-fn-registry.js";
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { sanitizeToolCallIdsForCloudCodeAssist } from "../../tool-call-id.js";
+import { jsonResult } from "../../tools/common.js";
+import { createToolLoadTool } from "../../tools/tool-load-tool.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
 import { isRunnerAbortError } from "../abort.js";
@@ -439,8 +443,100 @@ export async function runEmbeddedAttempt(
           },
         });
     const toolsEnabled = supportsModelTools(params.model);
+    // Lazy tool loading: split tools into active (schemas loaded) and deferred (summary only)
+    const lazyConfig = params.config?.tools?.lazyLoading;
+    const lazyEnabled = lazyConfig?.enabled === true && !params.disableTools;
+    let toolLoadRequested: string[] | null = null;
+    let toolLoadAborted = false;
+    // Callback to abort the tool-use loop when a deferred stub fires.
+    // Set later once abortRun() is available (inside the session block).
+    let requestToolLoadAbort: (() => void) | null = null;
+
+    const DEFAULT_CORE_TOOLS = [
+      "read",
+      "write",
+      "edit",
+      "apply_patch",
+      "grep",
+      "find",
+      "ls",
+      "exec",
+      "process",
+      "message",
+      "session_status",
+      "tool_load",
+    ];
+    const coreToolNames = new Set(
+      (lazyConfig?.coreTools ?? DEFAULT_CORE_TOOLS).map((n) => n.toLowerCase()),
+    );
+    // Always include tool_load itself as core
+    coreToolNames.add("tool_load");
+    const loadedToolNames = new Set((params.loadedToolNames ?? []).map((n) => n.toLowerCase()));
+
+    let activeTools: typeof toolsRaw;
+    let allToolsForPrompt: typeof toolsRaw;
+    let deferredToolNames: Set<string> | undefined;
+
+    if (lazyEnabled && toolsRaw.length > 0) {
+      activeTools = toolsRaw.filter(
+        (t) => coreToolNames.has(t.name.toLowerCase()) || loadedToolNames.has(t.name.toLowerCase()),
+      );
+      const deferred = toolsRaw.filter(
+        (t) =>
+          !coreToolNames.has(t.name.toLowerCase()) && !loadedToolNames.has(t.name.toLowerCase()),
+      );
+      deferredToolNames = new Set(deferred.map((t) => t.name.toLowerCase()));
+
+      // Create auto-loading stubs for deferred tools: when the model calls a deferred tool,
+      // the stub auto-registers the tool for loading. The run loop will detect this and
+      // retry with the real tool schemas loaded.
+      const DeferredStubSchema = Type.Object({});
+      const deferredStubs = deferred.map((t) => ({
+        name: t.name,
+        label: t.label ?? t.name,
+        description: t.description ?? t.label ?? t.name,
+        parameters: DeferredStubSchema,
+        execute: async (_toolCallId: string, _params: Record<string, unknown>) => {
+          toolLoadRequested = [...(toolLoadRequested ?? []), t.name];
+          toolLoadAborted = true;
+          log.info(
+            `[lazy-loading] auto-load triggered for deferred tool: ${t.name}, aborting tool loop`,
+          );
+          // Abort the tool-use loop so the model doesn't keep calling stubs in a loop.
+          // The run loop detects toolLoadAborted and retries with real schemas.
+          requestToolLoadAbort?.();
+          return jsonResult({
+            status: "loading",
+            message: `The ${t.name} tool is being loaded.`,
+          });
+        },
+      }));
+
+      // Inject tool_load meta-tool as a fallback for explicit loading
+      const toolLoadTool = createToolLoadTool({
+        allToolNames: toolsRaw.map((t) => t.name),
+        coreToolNames,
+        onLoad: (names) => {
+          toolLoadRequested = [...(toolLoadRequested ?? []), ...names];
+        },
+      });
+
+      activeTools = [...activeTools, toolLoadTool, ...deferredStubs];
+
+      // System prompt sees ALL tools (for summaries), but session only gets active tools
+      allToolsForPrompt = [...activeTools, ...deferred];
+
+      log.info(
+        `[lazy-loading] core=${activeTools.length - deferredStubs.length - 1} stubs=${deferredStubs.length} ` +
+          `loaded=${params.loadedToolNames?.length ?? 0}`,
+      );
+    } else {
+      activeTools = toolsRaw;
+      allToolsForPrompt = toolsRaw;
+    }
+
     const tools = sanitizeToolsForGoogle({
-      tools: toolsEnabled ? toolsRaw : [],
+      tools: toolsEnabled ? activeTools : [],
       provider: params.provider,
     });
     const clientTools = toolsEnabled ? params.clientTools : undefined;
@@ -610,7 +706,8 @@ export async function runEmbeddedAttempt(
       runtimeInfo,
       messageToolHints,
       sandboxInfo,
-      tools: effectiveTools,
+      tools: allToolsForPrompt,
+      deferredToolNames,
       modelAliasLines: buildModelAliasLines(params.config),
       userTimezone,
       userTime,
@@ -840,10 +937,15 @@ export async function runEmbeddedAttempt(
         workspaceDir: params.workspaceDir,
       });
 
-      // Ollama native API: bypass SDK's streamSimple and use direct /api/chat calls
-      // for reliable streaming + tool calling support (#11828).
-      if (params.model.api === "ollama") {
-        // Prioritize configured provider baseUrl so Docker/remote Ollama hosts work reliably.
+      // Plugin stream functions: check for a plugin-registered stream function first
+      // (e.g. copilot-studio), then fall back to built-in providers.
+      const pluginStreamFn = getPluginStreamFn(params.model.api ?? "");
+      if (pluginStreamFn) {
+        activeSession.agent.streamFn = pluginStreamFn;
+      } else if (params.model.api === "ollama") {
+        // Ollama native API: bypass SDK's streamSimple and use direct /api/chat calls
+        // for reliable streaming + tool calling support (#11828).
+        // Use the resolved model baseUrl first so custom provider aliases work.
         const providerConfig = params.config?.models?.providers?.[params.model.provider];
         const providerBaseUrl =
           typeof providerConfig?.baseUrl === "string" ? providerConfig.baseUrl : undefined;
@@ -1171,6 +1273,8 @@ export async function runEmbeddedAttempt(
         abortCompaction();
         void activeSession.abort();
       };
+      // Wire up the lazy-loading stub abort callback now that abortRun is available.
+      requestToolLoadAbort = () => abortRun(false, "tool_load_retry");
       const abortable = <T>(promise: Promise<T>): Promise<T> => {
         const signal = runAbortController.signal;
         if (signal.aborted) {
@@ -1817,6 +1921,9 @@ export async function runEmbeddedAttempt(
         // Client tool call detected (OpenResponses hosted tools)
         clientToolCall: clientToolCallDetected ?? undefined,
         yieldDetected: yieldDetected || undefined,
+        // Lazy tool loading: tool names requested via tool_load
+        toolLoadRequested: toolLoadRequested ?? undefined,
+        toolLoadAborted: toolLoadAborted || undefined,
       };
     } finally {
       // Always tear down the session (and release the lock) before we leave this attempt.

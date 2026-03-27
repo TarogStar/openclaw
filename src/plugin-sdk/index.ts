@@ -47,11 +47,20 @@ export type {
   MediaUnderstandingProviderPlugin,
   OpenClawPluginApi,
   OpenClawPluginConfigSchema,
+  OpenClawPluginService,
+  OpenClawPluginServiceContext,
+  PluginAgentRunnerFn,
+  PluginAgentRunnerParams,
+  PluginHookExecApprovalContext,
+  PluginHookExecApprovalRequestedEvent,
+  PluginHookExecApprovalResolvedEvent,
   PluginLogger,
+  PluginToolProviderFn,
   ProviderAuthContext,
   ProviderAuthResult,
   ProviderRuntimeModel,
   SpeechProviderPlugin,
+  StreamFn,
 } from "../plugins/types.js";
 export type {
   PluginRuntime,
@@ -65,6 +74,92 @@ export type { OpenClawConfig as ClawdbotConfig } from "../config/config.js";
 export type { CliBackendConfig } from "../config/types.js";
 export * from "./image-generation.js";
 export type { SecretInput, SecretRef } from "../config/types.secrets.js";
+export { isDangerousNameMatchingEnabled } from "../config/dangerous-name-matching.js";
+
+export type { FileLockHandle, FileLockOptions } from "./file-lock.js";
+export { acquireFileLock, withFileLock } from "./file-lock.js";
+export { normalizeWebhookPath, resolveWebhookPath } from "./webhook-path.js";
+export {
+  registerWebhookTarget,
+  rejectNonPostWebhookRequest,
+  resolveSingleWebhookTarget,
+  resolveSingleWebhookTargetAsync,
+  resolveWebhookTargets,
+} from "./webhook-targets.js";
+export type { WebhookTargetMatchResult } from "./webhook-targets.js";
+export {
+  applyBasicWebhookRequestGuards,
+  isJsonContentType,
+  readJsonWebhookBodyOrReject,
+} from "./webhook-request-guards.js";
+export type { AgentMediaPayload } from "./agent-media-payload.js";
+export { buildAgentMediaPayload } from "./agent-media-payload.js";
+export {
+  buildBaseAccountStatusSnapshot,
+  buildBaseChannelStatusSummary,
+  buildTokenChannelStatusSummary,
+  collectStatusIssuesFromLastError,
+  createDefaultChannelRuntimeState,
+} from "./status-helpers.js";
+export { buildOauthProviderAuthResult } from "./provider-auth-result.js";
+export { getChatChannelMeta } from "../channels/registry.js";
+export type {
+  BlockStreamingCoalesceConfig,
+  DmPolicy,
+  DmConfig,
+  GroupPolicy,
+  GroupToolPolicyConfig,
+  GroupToolPolicyBySenderConfig,
+  MarkdownConfig,
+  MarkdownTableMode,
+  GoogleChatAccountConfig,
+  GoogleChatConfig,
+  GoogleChatDmConfig,
+  GoogleChatGroupConfig,
+  GoogleChatActionConfig,
+  MSTeamsChannelConfig,
+  MSTeamsConfig,
+  MSTeamsReplyStyle,
+  MSTeamsTeamConfig,
+} from "../config/types.js";
+export {
+  GROUP_POLICY_BLOCKED_LABEL,
+  resetMissingProviderGroupPolicyFallbackWarningsForTesting,
+  resolveAllowlistProviderRuntimeGroupPolicy,
+  resolveDefaultGroupPolicy,
+  resolveOpenProviderRuntimeGroupPolicy,
+  resolveRuntimeGroupPolicy,
+  type GroupPolicyDefaultsConfig,
+  type RuntimeGroupPolicyResolution,
+  type RuntimeGroupPolicyParams,
+  type ResolveProviderRuntimeGroupPolicyParams,
+  warnMissingProviderGroupPolicyFallbackOnce,
+} from "../config/runtime-group-policy.js";
+export {
+  DiscordConfigSchema,
+  GoogleChatConfigSchema,
+  IMessageConfigSchema,
+  MSTeamsConfigSchema,
+  SignalConfigSchema,
+  SlackConfigSchema,
+  TelegramConfigSchema,
+} from "../config/zod-schema.providers-core.js";
+export { WhatsAppConfigSchema } from "../config/zod-schema.providers-whatsapp.js";
+export {
+  BlockStreamingCoalesceSchema,
+  DmConfigSchema,
+  DmPolicySchema,
+  GroupPolicySchema,
+  MarkdownConfigSchema,
+  MarkdownTableModeSchema,
+  normalizeAllowFrom,
+  requireOpenAllowFrom,
+  TtsAutoSchema,
+  TtsConfigSchema,
+  TtsModeSchema,
+  TtsProviderSchema,
+} from "../config/zod-schema.core.js";
+export { ToolPolicySchema } from "../config/zod-schema.agent-runtime.js";
 export type { RuntimeEnv } from "../runtime.js";
 export type { HookEntry } from "../hooks/types.js";
 export type { ReplyPayload } from "../auto-reply/types.js";

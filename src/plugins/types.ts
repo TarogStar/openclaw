@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import type { ModelRegistry } from "@mariozechner/pi-coding-agent";
 import type { Command } from "commander";
@@ -12,7 +12,9 @@ import type {
 } from "../agents/auth-profiles/types.js";
 import type { ModelCatalogEntry } from "../agents/model-catalog.js";
 import type { ProviderCapabilities } from "../agents/provider-capabilities.js";
+import type { PluginAgentRunnerFn } from "../agents/runner-registry.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import type { PluginToolProviderFn } from "../agents/tools/plugin-tool-provider-registry.js";
 import type { ThinkLevel } from "../auto-reply/thinking.js";
 import type { ReplyPayload } from "../auto-reply/types.js";
 import type {
@@ -52,8 +54,11 @@ import type { SecretInputMode } from "./provider-auth-types.js";
 import type { createVpsAwareOAuthHandlers } from "./provider-oauth-flow.js";
 import type { PluginRuntime } from "./runtime/types.js";
 
+export type { StreamFn } from "@mariozechner/pi-agent-core";
 export type { PluginRuntime } from "./runtime/types.js";
 export type { AnyAgentTool } from "../agents/tools/common.js";
+export type { PluginToolProviderFn } from "../agents/tools/plugin-tool-provider-registry.js";
+export type { PluginAgentRunnerFn, PluginAgentRunnerParams } from "../agents/runner-registry.js";
 
 export type ProviderAuthOptionBag = {
   token?: string;
@@ -1439,6 +1444,16 @@ export type OpenClawPluginApi = {
   registerMemoryEmbeddingProvider: (
     adapter: import("./memory-embedding-providers.js").MemoryEmbeddingProviderAdapter,
   ) => void;
+  registerAgentRunner: (providerId: string, runner: PluginAgentRunnerFn) => void;
+  /** Register a custom stream function for a model API type (e.g. "copilot-studio"). */
+  registerStreamFn: (apiType: string, streamFn: StreamFn) => void;
+  /** Register a plugin-provided tool backend (e.g. web search, email, calendar). */
+  registerToolProvider: (toolId: string, providerId: string, fn: PluginToolProviderFn) => void;
+  /** Resolve an exec approval request (allow-once, allow-always, or deny). */
+  resolveExecApproval: (
+    id: string,
+    decision: "allow-once" | "allow-always" | "deny",
+  ) => Promise<void>;
   resolvePath: (input: string) => string;
   /** Register a lifecycle hook handler */
   on: <K extends PluginHookName>(
@@ -1489,6 +1504,8 @@ export type PluginHookName =
   | "subagent_delivery_target"
   | "subagent_spawned"
   | "subagent_ended"
+  | "exec_approval_requested"
+  | "exec_approval_resolved"
   | "gateway_start"
   | "gateway_stop"
   | "before_dispatch";
@@ -1520,6 +1537,8 @@ export const PLUGIN_HOOK_NAMES = [
   "gateway_start",
   "gateway_stop",
   "before_dispatch",
+  "exec_approval_requested",
+  "exec_approval_resolved",
 ] as const satisfies readonly PluginHookName[];
 
 type MissingPluginHookNames = Exclude<PluginHookName, (typeof PLUGIN_HOOK_NAMES)[number]>;
@@ -1998,6 +2017,31 @@ export type PluginHookGatewayStopEvent = {
   reason?: string;
 };
 
+// exec_approval_requested hook
+export type PluginHookExecApprovalRequestedEvent = {
+  id: string;
+  command: string;
+  cwd?: string | null;
+  host?: string | null;
+  agentId?: string | null;
+  sessionKey?: string | null;
+  security?: string | null;
+  ask?: string | null;
+  expiresAtMs: number;
+  createdAtMs: number;
+};
+
+// exec_approval_resolved hook
+export type PluginHookExecApprovalResolvedEvent = {
+  id: string;
+  decision: "allow-once" | "allow-always" | "deny";
+  resolvedBy?: string | null;
+};
+
+export type PluginHookExecApprovalContext = {
+  sessionKey?: string | null;
+};
+
 // Hook handler types mapped by hook name
 export type PluginHookHandlerMap = {
   before_model_resolve: (
@@ -2095,6 +2139,14 @@ export type PluginHookHandlerMap = {
   subagent_ended: (
     event: PluginHookSubagentEndedEvent,
     ctx: PluginHookSubagentContext,
+  ) => Promise<void> | void;
+  exec_approval_requested: (
+    event: PluginHookExecApprovalRequestedEvent,
+    ctx: PluginHookExecApprovalContext,
+  ) => Promise<void> | void;
+  exec_approval_resolved: (
+    event: PluginHookExecApprovalResolvedEvent,
+    ctx: PluginHookExecApprovalContext,
   ) => Promise<void> | void;
   gateway_start: (
     event: PluginHookGatewayStartEvent,

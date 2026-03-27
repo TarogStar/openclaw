@@ -1,7 +1,11 @@
 import path from "node:path";
+import { registerPluginAgentRunner } from "../agents/runner-registry.js";
+import { registerPluginStreamFn } from "../agents/stream-fn-registry.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import { registerPluginToolProvider } from "../agents/tools/plugin-tool-provider-registry.js";
 import type { ChannelPlugin } from "../channels/plugins/types.js";
 import { registerContextEngineForOwner } from "../context-engine/registry.js";
+import { callGateway } from "../gateway/call.js";
 import type { OperatorScope } from "../gateway/method-scopes.js";
 import type {
   GatewayRequestHandler,
@@ -1128,6 +1132,31 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
         }
         registerMemoryEmbeddingProvider(adapter, {
           ownerPluginId: record.id,
+        });
+      },
+      registerAgentRunner: (providerId, runner) => {
+        if (registrationMode !== "full") {
+          return;
+        }
+        registerPluginAgentRunner(providerId, runner);
+      },
+      registerStreamFn: (apiType, streamFn) => {
+        if (registrationMode !== "full") {
+          return;
+        }
+        registerPluginStreamFn(apiType, streamFn);
+      },
+      registerToolProvider: (toolId, providerId, fn) => {
+        if (registrationMode !== "full") {
+          return;
+        }
+        registerPluginToolProvider(toolId, providerId, fn);
+      },
+      resolveExecApproval: async (id, decision) => {
+        await callGateway({
+          method: "resolve-exec-approval",
+          params: { id, decision },
+          scopes: ["operator.approvals"],
         });
       },
       resolvePath: (input: string) => resolveUserPath(input),
