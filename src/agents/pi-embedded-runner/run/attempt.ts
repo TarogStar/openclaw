@@ -114,6 +114,7 @@ import {
   clearActiveEmbeddedRun,
   type EmbeddedPiQueueHandle,
   setActiveEmbeddedRun,
+  touchStreamingActivity,
   updateActiveEmbeddedRunSnapshot,
 } from "../runs.js";
 import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
@@ -979,6 +980,17 @@ export async function runEmbeddedAttempt(
         activeSession.agent.streamFn = streamSimple;
       }
 
+      // Overriding agent.streamFn above replaces the SDK's wrapper that injects
+      // apiKey from modelRegistry.  Set agent.getApiKey so the agent-loop can
+      // still resolve the key at call time (pi-agent-core checks getApiKey
+      // before every LLM call and passes the result as options.apiKey).
+      // Without this, custom/local providers like lmstudio that have no
+      // entry in pi-ai's getEnvApiKey() env-var map would fail with
+      // "No API key for provider".
+      activeSession.agent.getApiKey = async (provider: string) => {
+        return (await params.authStorage.getApiKey(provider)) ?? undefined;
+      };
+
       // Ollama with OpenAI-compatible API needs num_ctx in payload.options.
       // Otherwise Ollama defaults to a 4096 context window.
       const providerIdForNumCtx =
@@ -1311,12 +1323,27 @@ export async function runEmbeddedAttempt(
         onToolResult: params.onToolResult,
         onReasoningStream: params.onReasoningStream,
         onReasoningEnd: params.onReasoningEnd,
-        onBlockReply: params.onBlockReply,
+        onBlockReply: params.onBlockReply
+          ? (...args: Parameters<NonNullable<typeof params.onBlockReply>>) => {
+              touchStreamingActivity(params.sessionId);
+              return params.onBlockReply!(...args);
+            }
+          : undefined,
         onBlockReplyFlush: params.onBlockReplyFlush,
         blockReplyBreak: params.blockReplyBreak,
         blockReplyChunking: params.blockReplyChunking,
-        onPartialReply: params.onPartialReply,
-        onAssistantMessageStart: params.onAssistantMessageStart,
+        onPartialReply: params.onPartialReply
+          ? (...args: Parameters<NonNullable<typeof params.onPartialReply>>) => {
+              touchStreamingActivity(params.sessionId);
+              return params.onPartialReply!(...args);
+            }
+          : undefined,
+        onAssistantMessageStart: params.onAssistantMessageStart
+          ? (...args: Parameters<NonNullable<typeof params.onAssistantMessageStart>>) => {
+              touchStreamingActivity(params.sessionId);
+              return params.onAssistantMessageStart!(...args);
+            }
+          : undefined,
         onAgentEvent: params.onAgentEvent,
         enforceFinalTag: params.enforceFinalTag,
         config: params.config,
@@ -1348,6 +1375,11 @@ export async function runEmbeddedAttempt(
         isStreaming: () => activeSession.isStreaming,
         isCompacting: () => subscription.isCompacting(),
         abort: abortRun,
+        forceEndStreaming: () => {
+          // isStreaming is a read-only getter; force-override the backing state
+          // to unblock the gateway when the MLX backend crashes mid-stream.
+          (activeSession as unknown as { isStreaming: boolean }).isStreaming = false;
+        },
       };
       setActiveEmbeddedRun(params.sessionId, queueHandle, params.sessionKey);
 
@@ -1400,10 +1432,12 @@ export async function runEmbeddedAttempt(
                 }
                 if (!isProbeSession) {
                   log.warn(
-                    `embedded run abort still streaming: runId=${params.runId} sessionId=${params.sessionId}`,
+                    `embedded run abort force-clearing stuck stream: runId=${params.runId} sessionId=${params.sessionId}`,
                   );
                 }
-              }, 10_000);
+                // Force-clear the streaming state after 30s if abort didn't naturally end it
+                (activeSession as unknown as { isStreaming: boolean }).isStreaming = false;
+              }, 30_000);
             }
           },
           Math.max(1, delayMs),

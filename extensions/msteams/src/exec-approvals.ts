@@ -2,7 +2,7 @@ import type {
   OpenClawPluginApi,
   PluginHookExecApprovalRequestedEvent,
   PluginHookExecApprovalResolvedEvent,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/core";
 import type { MSTeamsConversationStore } from "./conversation-store.js";
 import { buildConversationReference, type MSTeamsAdapter } from "./messenger.js";
 

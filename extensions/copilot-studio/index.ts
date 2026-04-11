@@ -1,4 +1,4 @@
-import type { OpenClawPluginApi, PluginToolProviderFn } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi, PluginToolProviderFn } from "openclaw/plugin-sdk/core";
 import { CopilotStudioAuth } from "./src/auth.js";
 import { CopilotStudioClient } from "./src/client.js";
 import { createCopilotStudioStreamFn, resetCopilotStudioConversation } from "./src/stream-fn.js";

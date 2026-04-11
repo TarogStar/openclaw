@@ -17,6 +17,34 @@ import { jsonResult, payloadTextResult } from "./tools/common.js";
 
 type AnyAgentTool = AgentTool;
 
+/**
+ * Ensure every property in a JSON Schema parameters object has a `type` field.
+ * Some models (Gemma 4) have Jinja templates that apply `| upper` to `type`,
+ * which crashes on UndefinedValue if `type` is missing.
+ */
+function ensurePropertyTypes(schema: unknown): unknown {
+  if (!schema || typeof schema !== "object") {
+    return schema;
+  }
+  const s = schema as Record<string, unknown>;
+  if (s.properties && typeof s.properties === "object") {
+    const props = s.properties as Record<string, Record<string, unknown>>;
+    for (const key of Object.keys(props)) {
+      if (props[key] && typeof props[key] === "object" && !("type" in props[key])) {
+        props[key].type = "string";
+      }
+      // Recurse for nested objects
+      if (props[key]?.type === "object" && props[key]?.properties) {
+        ensurePropertyTypes(props[key]);
+      }
+    }
+  }
+  if (!("type" in s) && s.properties) {
+    s.type = "object";
+  }
+  return schema;
+}
+
 type ToolExecuteArgsCurrent = [
   string,
   unknown,
@@ -123,7 +151,7 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
       name,
       label: tool.label ?? name,
       description: tool.description ?? "",
-      parameters: tool.parameters,
+      parameters: ensurePropertyTypes(tool.parameters) as typeof tool.parameters,
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
         const { toolCallId, params, onUpdate, signal } = splitToolExecuteArgs(args);
         let executeParams = params;
@@ -185,7 +213,7 @@ export function toClientToolDefinitions(
       name: func.name,
       label: func.name,
       description: func.description ?? "",
-      parameters: func.parameters as ToolDefinition["parameters"],
+      parameters: ensurePropertyTypes(func.parameters) as ToolDefinition["parameters"],
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
         const { toolCallId, params } = splitToolExecuteArgs(args);
         const outcome = await runBeforeToolCallHook({

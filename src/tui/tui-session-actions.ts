@@ -373,6 +373,8 @@ export function createSessionActions(context: SessionActionContext) {
     // so refresh data for the newly selected session isn't rejected as stale.
     state.sessionInfo.updatedAt = null;
     state.historyLoaded = false;
+    // Always reset activity status when switching sessions to clear any stuck indicator
+    setActivityStatus("idle");
     clearLocalRunIds?.();
     btw.clear();
     updateHeader();
@@ -382,7 +384,16 @@ export function createSessionActions(context: SessionActionContext) {
 
   const abortActive = async () => {
     if (!state.activeChatRunId) {
-      chatLog.addSystem("no active run");
+      // Even without an active run, force-clear any stuck streaming/busy state
+      // so the user can recover from a model crash that left the indicator stuck.
+      const busyStates = new Set(["sending", "waiting", "streaming", "running"]);
+      if (busyStates.has(state.activityStatus)) {
+        state.activeChatRunId = null;
+        setActivityStatus("idle");
+        chatLog.addSystem("cleared stuck activity state");
+      } else {
+        chatLog.addSystem("no active run");
+      }
       tui.requestRender();
       return;
     }
@@ -391,8 +402,11 @@ export function createSessionActions(context: SessionActionContext) {
         sessionKey: state.currentSessionKey,
         runId: state.activeChatRunId,
       });
+      state.activeChatRunId = null;
       setActivityStatus("aborted");
     } catch (err) {
+      // Even if abort RPC fails, clear local state so TUI is not stuck
+      state.activeChatRunId = null;
       chatLog.addSystem(`abort failed: ${String(err)}`);
       setActivityStatus("abort failed");
     }

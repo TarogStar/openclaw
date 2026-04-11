@@ -458,6 +458,9 @@ export function createCommandHandlers(context: CommandHandlerContext) {
           state.sessionInfo.inputTokens = null;
           state.sessionInfo.outputTokens = null;
           state.sessionInfo.totalTokens = null;
+          // Always reset streaming/activity state so a stuck indicator is cleared
+          state.activeChatRunId = null;
+          setActivityStatus("idle");
           tui.requestRender();
 
           // Generate unique session key to isolate this TUI client (#39217)
@@ -476,6 +479,9 @@ export function createCommandHandlers(context: CommandHandlerContext) {
           state.sessionInfo.inputTokens = null;
           state.sessionInfo.outputTokens = null;
           state.sessionInfo.totalTokens = null;
+          // Always reset streaming/activity state so a stuck indicator is cleared
+          state.activeChatRunId = null;
+          setActivityStatus("idle");
           tui.requestRender();
 
           await client.resetSession(state.currentSessionKey, name);

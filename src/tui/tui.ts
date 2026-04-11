@@ -466,6 +466,11 @@ export async function runTui(opts: TuiOptions) {
   };
 
   const busyStates = new Set(["sending", "waiting", "streaming", "running"]);
+  // Safety net: auto-clear stuck streaming/busy indicator after this many ms
+  // of no activity status change. Protects against model crashes that never
+  // send a terminal event (e.g., LM Studio MLX "Exit code: null").
+  const STREAMING_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+  let lastBusyActivityAt = 0;
   let statusText: Text | null = null;
   let statusLoader: Loader | null = null;
 
@@ -540,6 +545,17 @@ export async function runTui(opts: TuiOptions) {
       if (!busyStates.has(activityStatus)) {
         return;
       }
+      // Safety net: if streaming/busy indicator has been active with no new
+      // activity data for STREAMING_TIMEOUT_MS, auto-clear it. This catches
+      // model crashes that never send a terminal event to the TUI.
+      if (lastBusyActivityAt > 0 && Date.now() - lastBusyActivityAt > STREAMING_TIMEOUT_MS) {
+        activeChatRunId = null;
+        activityStatus = "idle";
+        chatLog.addSystem("streaming timed out — model may have crashed");
+        renderStatus();
+        tui.requestRender();
+        return;
+      }
       updateBusyStatusMessage();
     }, 1000);
   };
@@ -567,6 +583,16 @@ export async function runTui(opts: TuiOptions) {
 
     waitingTimer = setInterval(() => {
       if (activityStatus !== "waiting") {
+        return;
+      }
+      // Safety net for the waiting state too — if we've been waiting for a
+      // response for longer than the timeout, the model likely crashed.
+      if (lastBusyActivityAt > 0 && Date.now() - lastBusyActivityAt > STREAMING_TIMEOUT_MS) {
+        activeChatRunId = null;
+        activityStatus = "idle";
+        chatLog.addSystem("waiting timed out — model may have crashed");
+        renderStatus();
+        tui.requestRender();
         return;
       }
       updateBusyStatusMessage();
@@ -626,6 +652,11 @@ export async function runTui(opts: TuiOptions) {
 
   const setActivityStatus = (text: string) => {
     activityStatus = text;
+    // Track when we last entered or refreshed a busy state so the timeout
+    // safety net can detect stale streaming indicators.
+    if (busyStates.has(text)) {
+      lastBusyActivityAt = Date.now();
+    }
     renderStatus();
   };
 
@@ -880,6 +911,10 @@ export async function runTui(opts: TuiOptions) {
     isConnected = false;
     wasDisconnected = true;
     historyLoaded = false;
+    // Clear any in-flight run tracking — the gateway is gone, so no terminal
+    // event will ever arrive for the current run. Without this the streaming
+    // indicator stays stuck forever after a model crash + disconnect.
+    activeChatRunId = null;
     const disconnectState = resolveGatewayDisconnectState(reason);
     setConnectionStatus(disconnectState.connectionStatus, 5000);
     setActivityStatus(disconnectState.activityStatus);

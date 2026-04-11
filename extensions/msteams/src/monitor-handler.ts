@@ -435,8 +435,7 @@ export function registerMSTeamsHandlers<T extends MSTeamsActivityHandler>(
     const ctx = context as MSTeamsTurnContext;
     const text = ctx.activity?.text ?? "";
     const value = ctx.activity?.value;
-    const isActionSubmit =
-      (!text || !text.trim()) && value != null && typeof value === "object";
+    const isActionSubmit = (!text || !text.trim()) && value != null && typeof value === "object";
 
     if (isActionSubmit) {
       // Adaptive card Action.Submit — store in global queue and route as synthetic message

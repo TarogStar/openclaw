@@ -1,4 +1,4 @@
-import type { PluginHookExecApprovalRequestedEvent } from "openclaw/plugin-sdk";
+import type { PluginHookExecApprovalRequestedEvent } from "openclaw/plugin-sdk/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildExecApprovalCard,

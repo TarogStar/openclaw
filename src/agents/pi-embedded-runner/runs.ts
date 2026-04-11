@@ -10,6 +10,7 @@ type EmbeddedPiQueueHandle = {
   isStreaming: () => boolean;
   isCompacting: () => boolean;
   abort: () => void;
+  forceEndStreaming?: () => void;
 };
 
 export type ActiveEmbeddedRunSnapshot = {
@@ -37,6 +38,13 @@ const embeddedRunState = resolveGlobalSingleton(EMBEDDED_RUN_STATE_KEY, () => ({
 const ACTIVE_EMBEDDED_RUNS = embeddedRunState.activeRuns;
 const ACTIVE_EMBEDDED_RUN_SNAPSHOTS = embeddedRunState.snapshots;
 const EMBEDDED_RUN_WAITERS = embeddedRunState.waiters;
+
+const STREAMING_STALENESS_THRESHOLD_MS = 5 * 60 * 1000;
+const lastStreamingActivity = new Map<string, number>();
+
+export function touchStreamingActivity(sessionId: string): void {
+  lastStreamingActivity.set(sessionId, Date.now());
+}
 
 export function queueEmbeddedPiMessage(sessionId: string, text: string): boolean {
   const handle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
@@ -136,7 +144,22 @@ export function isEmbeddedPiRunStreaming(sessionId: string): boolean {
   if (!handle) {
     return false;
   }
-  return handle.isStreaming();
+  if (!handle.isStreaming()) {
+    return false;
+  }
+  const lastActivity = lastStreamingActivity.get(sessionId);
+  if (lastActivity != null && Date.now() - lastActivity > STREAMING_STALENESS_THRESHOLD_MS) {
+    diag.warn(
+      `streaming stale, force-ending: sessionId=${sessionId} staleSinceMs=${Date.now() - lastActivity}`,
+    );
+    handle.forceEndStreaming?.();
+    ACTIVE_EMBEDDED_RUNS.delete(sessionId);
+    ACTIVE_EMBEDDED_RUN_SNAPSHOTS.delete(sessionId);
+    lastStreamingActivity.delete(sessionId);
+    notifyEmbeddedRunEnded(sessionId);
+    return false;
+  }
+  return true;
 }
 
 export function getActiveEmbeddedRunCount(): number {
@@ -233,6 +256,7 @@ export function setActiveEmbeddedRun(
 ) {
   const wasActive = ACTIVE_EMBEDDED_RUNS.has(sessionId);
   ACTIVE_EMBEDDED_RUNS.set(sessionId, handle);
+  lastStreamingActivity.set(sessionId, Date.now());
   logSessionStateChange({
     sessionId,
     sessionKey,
@@ -262,6 +286,7 @@ export function clearActiveEmbeddedRun(
   if (ACTIVE_EMBEDDED_RUNS.get(sessionId) === handle) {
     ACTIVE_EMBEDDED_RUNS.delete(sessionId);
     ACTIVE_EMBEDDED_RUN_SNAPSHOTS.delete(sessionId);
+    lastStreamingActivity.delete(sessionId);
     logSessionStateChange({ sessionId, sessionKey, state: "idle", reason: "run_completed" });
     if (!sessionId.startsWith("probe-")) {
       diag.debug(`run cleared: sessionId=${sessionId} totalActive=${ACTIVE_EMBEDDED_RUNS.size}`);
@@ -273,6 +298,7 @@ export function clearActiveEmbeddedRun(
 }
 
 export const __testing = {
+  STREAMING_STALENESS_THRESHOLD_MS,
   resetActiveEmbeddedRuns() {
     for (const waiters of EMBEDDED_RUN_WAITERS.values()) {
       for (const waiter of waiters) {
@@ -283,6 +309,7 @@ export const __testing = {
     EMBEDDED_RUN_WAITERS.clear();
     ACTIVE_EMBEDDED_RUNS.clear();
     ACTIVE_EMBEDDED_RUN_SNAPSHOTS.clear();
+    lastStreamingActivity.clear();
   },
 };
 
