@@ -736,6 +736,7 @@ function isRunnableJob(params: {
   skipJobIds?: ReadonlySet<string>;
   skipAtIfAlreadyRan?: boolean;
   allowCronMissedRunByLastRun?: boolean;
+  state?: CronServiceState;
 }): boolean {
   const { job, nowMs } = params;
   if (!job.state) {
@@ -749,6 +750,16 @@ function isRunnableJob(params: {
   }
   if (typeof job.state.runningAtMs === "number") {
     return false;
+  }
+  // Skip when too many agents are already running (prevents model memory/inference contention).
+  if (params.state) {
+    const threshold = params.state.deps.cronConfig?.skipWhenActiveAgents;
+    if (typeof threshold === "number" && threshold > 0 && params.state.deps.getActiveAgentCount) {
+      const active = params.state.deps.getActiveAgentCount();
+      if (active >= threshold) {
+        return false;
+      }
+    }
   }
   if (params.skipAtIfAlreadyRan && job.schedule.kind === "at" && job.state.lastStatus) {
     // One-shot with terminal status: skip unless it's a transient-error retry.
@@ -836,6 +847,7 @@ function collectRunnableJobs(
       skipJobIds: opts?.skipJobIds,
       skipAtIfAlreadyRan: opts?.skipAtIfAlreadyRan,
       allowCronMissedRunByLastRun: opts?.allowCronMissedRunByLastRun,
+      state,
     }),
   );
 }

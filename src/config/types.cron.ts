@@ -31,6 +31,14 @@ export type CronConfig = {
   enabled?: boolean;
   store?: string;
   maxConcurrentRuns?: number;
+  /**
+   * Skip firing cron jobs when this many or more embedded agent runs are
+   * already active. Prevents cron heartbeats from competing for model
+   * memory/inference slots with pipeline subagents.
+   * The job is not marked as failed — it silently skips and retries at the
+   * next scheduled interval.
+   */
+  skipWhenActiveAgents?: number;
   /** Override default retry policy for one-shot jobs on transient errors. */
   retry?: CronRetryConfig;
   /**

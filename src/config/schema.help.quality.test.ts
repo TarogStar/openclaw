@@ -115,6 +115,7 @@ const TARGET_KEYS = [
   "cron.enabled",
   "cron.store",
   "cron.maxConcurrentRuns",
+  "cron.skipWhenActiveAgents",
   "cron.retry",
   "cron.retry.maxAttempts",
   "cron.retry.backoffMs",

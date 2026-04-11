@@ -1,4 +1,5 @@
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
 import type { CliDeps } from "../cli/deps.js";
 import { createOutboundSendDeps } from "../cli/outbound-send-deps.js";
 import { loadConfig } from "../config/config.js";
@@ -235,6 +236,7 @@ export function buildGatewayCronService(params: {
     defaultAgentId,
     resolveSessionStorePath,
     sessionStorePath,
+    getActiveAgentCount: getActiveEmbeddedRunCount,
     enqueueSystemEvent: (text, opts) => {
       const { agentId, cfg: runtimeConfig } = resolveCronAgent(opts?.agentId);
       const sessionKey = resolveCronSessionKey({

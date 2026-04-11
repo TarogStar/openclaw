@@ -8935,6 +8935,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
             exclusiveMinimum: 0,
             maximum: 9007199254740991,
           },
+          skipWhenActiveAgents: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            maximum: 9007199254740991,
+          },
           retry: {
             type: "object",
             properties: {
@@ -14403,6 +14408,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       label: "Cron Max Concurrent Runs",
       help: "Limits how many cron jobs can execute at the same time when multiple schedules fire together. Use lower values to protect CPU/memory under heavy automation load, or raise carefully for higher throughput.",
       tags: ["performance", "automation"],
+    },
+    "cron.skipWhenActiveAgents": {
+      label: "Cron Skip When Active Agents",
+      help: "Skip firing cron jobs when this many or more embedded agent runs are already active. Prevents heartbeat cron jobs from competing for model memory and inference slots with pipeline subagents. The skipped job silently retries at the next interval. Set to 2 to skip cron when a PM and subagent are both running.",
+      tags: ["automation"],
     },
     "cron.retry": {
       label: "Cron Retry Policy",

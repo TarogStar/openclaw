@@ -1207,6 +1207,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Path to the cron job store file used to persist scheduled jobs across restarts. Set an explicit path only when you need custom storage layout, backups, or mounted volumes.",
   "cron.maxConcurrentRuns":
     "Limits how many cron jobs can execute at the same time when multiple schedules fire together. Use lower values to protect CPU/memory under heavy automation load, or raise carefully for higher throughput.",
+  "cron.skipWhenActiveAgents":
+    "Skip firing cron jobs when this many or more embedded agent runs are already active. Prevents heartbeat cron jobs from competing for model memory and inference slots with pipeline subagents. The skipped job silently retries at the next interval. Set to 2 to skip cron when a PM and subagent are both running.",
   "cron.retry":
     "Overrides the default retry policy for one-shot jobs when they fail with transient errors (rate limit, overloaded, network, server_error). Omit to use defaults: maxAttempts 3, backoffMs [30000, 60000, 300000], retry all transient types.",
   "cron.retry.maxAttempts":

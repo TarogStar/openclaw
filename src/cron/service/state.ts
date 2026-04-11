@@ -60,6 +60,12 @@ export type CronServiceDeps = {
    * See: https://github.com/openclaw/openclaw/issues/18892
    */
   maxMissedJobsPerRestart?: number;
+  /**
+   * Returns the number of currently active embedded agent runs.
+   * Used by `skipWhenActiveAgents` to avoid firing cron jobs during
+   * heavy model inference.
+   */
+  getActiveAgentCount?: () => number;
   enqueueSystemEvent: (
     text: string,
     opts?: { agentId?: string; sessionKey?: string; contextKey?: string },
