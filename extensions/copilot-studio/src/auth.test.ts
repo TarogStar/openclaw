@@ -13,9 +13,6 @@ vi.mock("@azure/msal-node", () => ({
     acquireTokenSilent = mockAcquireTokenSilent;
     acquireTokenByDeviceCode = mockAcquireTokenByDeviceCode;
     getTokenCache = mockGetTokenCache;
-    constructor() {
-      // Ignore config
-    }
   },
 }));
 

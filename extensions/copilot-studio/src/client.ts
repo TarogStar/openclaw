@@ -63,7 +63,7 @@ export class CopilotStudioClient {
     // Strip existing /conversations path if present (SDK does this)
     const convIdx = url.pathname.indexOf("/conversations");
     if (convIdx !== -1) {
-      url.pathname = url.pathname.substring(0, convIdx);
+      url.pathname = url.pathname.slice(0, convIdx);
     }
     url.pathname = `${url.pathname}/conversations`;
     if (conversationId) {
@@ -147,7 +147,9 @@ export class CopilotStudioClient {
         try {
           while (true) {
             const { done } = await reader.read();
-            if (done) break;
+            if (done) {
+              break;
+            }
           }
         } finally {
           try {
@@ -245,7 +247,9 @@ export class CopilotStudioClient {
       adaptiveCards: [],
       conversationId,
     };
-    if (!res.body) return emptyResult;
+    if (!res.body) {
+      return emptyResult;
+    }
 
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
@@ -257,16 +261,22 @@ export class CopilotStudioClient {
     try {
       while (!signal.aborted) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
 
         buffer += value;
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
         for (const line of lines) {
-          if (!line.startsWith("data: ") || line.includes("data: end")) continue;
+          if (!line.startsWith("data: ") || line.includes("data: end")) {
+            continue;
+          }
           const jsonStr = line.substring(6).trim();
-          if (!jsonStr || jsonStr === "end") continue;
+          if (!jsonStr || jsonStr === "end") {
+            continue;
+          }
 
           try {
             const activity = JSON.parse(jsonStr) as SSEActivity;
@@ -332,7 +342,7 @@ export class CopilotStudioClient {
   ): Promise<QueryResult> {
     const token = await this.auth.getToken();
     this.log(
-      `[copilot-studio] sendActivity: ${conversationId.slice(0, 12)}... type=${String(activity.type ?? "unknown")}`,
+      `[copilot-studio] sendActivity: ${conversationId.slice(0, 12)}... type=${typeof activity.type === "string" ? activity.type : "unknown"}`,
     );
 
     const url = this.getConversationsUrl(conversationId);
@@ -370,7 +380,9 @@ export class CopilotStudioClient {
     streamTexts: Map<string, string>,
     standaloneTexts: string[],
   ): void {
-    if (!activity.text) return;
+    if (!activity.text) {
+      return;
+    }
 
     const streamId = activity.channelData?.streamId || "_default";
     const isInformative = activity.channelData?.streamType === "informative";

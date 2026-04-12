@@ -1968,6 +1968,12 @@ export type OpenClawPluginApi = {
   registerAutoEnableProbe: (probe: PluginSetupAutoEnableProbe) => void;
   /** Register a native model/provider plugin (text inference capability). */
   registerProvider: (provider: ProviderPlugin) => void;
+  /** Register a tool provider backend (e.g. "web_search:copilot-studio"). */
+  registerToolProvider: (
+    toolId: string,
+    providerId: string,
+    fn: import("../agents/tools/plugin-tool-provider-registry.js").PluginToolProviderFn,
+  ) => void;
   /** Register a speech synthesis provider (speech capability). */
   registerSpeechProvider: (provider: SpeechProviderPlugin) => void;
   /** Register a realtime transcription provider (streaming STT capability). */

@@ -5,6 +5,7 @@ import {
 } from "../agents/harness/registry.js";
 import type { AgentHarness } from "../agents/harness/types.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import { registerPluginToolProvider } from "../agents/tools/plugin-tool-provider-registry.js";
 import type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
 import { registerContextEngineForOwner } from "../context-engine/registry.js";
 import type { OperatorScope } from "../gateway/operator-scopes.js";
@@ -1158,6 +1159,11 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
                 registerHook(record, events, handler, opts, params.config),
               registerHttpRoute: (routeParams) => registerHttpRoute(record, routeParams),
               registerProvider: (provider) => registerProvider(record, provider),
+              registerToolProvider: (
+                toolId: string,
+                providerId: string,
+                fn: import("../agents/tools/plugin-tool-provider-registry.js").PluginToolProviderFn,
+              ) => registerPluginToolProvider(toolId, providerId, fn),
               registerAgentHarness: (harness) => registerAgentHarness(record, harness),
               registerSpeechProvider: (provider) => registerSpeechProvider(record, provider),
               registerRealtimeTranscriptionProvider: (provider) =>

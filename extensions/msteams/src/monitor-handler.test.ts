@@ -193,7 +193,7 @@ describe("registerMSTeamsHandlers", () => {
         name: "someOther/invoke",
         value: {},
       });
-      await handler.run!(ctx);
+      await handler.run(ctx);
 
       expect(originalRun).toHaveBeenCalled();
       expect(readGlobalInvokes()).toHaveLength(0);

@@ -33,6 +33,7 @@ export type BuildPluginApiParams = {
       | "registerConfigMigration"
       | "registerAutoEnableProbe"
       | "registerProvider"
+      | "registerToolProvider"
       | "registerSpeechProvider"
       | "registerRealtimeTranscriptionProvider"
       | "registerRealtimeVoiceProvider"
@@ -140,6 +141,7 @@ export function buildPluginApi(params: BuildPluginApiParams): OpenClawPluginApi 
     registerConfigMigration: handlers.registerConfigMigration ?? noopRegisterConfigMigration,
     registerAutoEnableProbe: handlers.registerAutoEnableProbe ?? noopRegisterAutoEnableProbe,
     registerProvider: handlers.registerProvider ?? noopRegisterProvider,
+    registerToolProvider: handlers.registerToolProvider ?? (() => {}),
     registerSpeechProvider: handlers.registerSpeechProvider ?? noopRegisterSpeechProvider,
     registerRealtimeTranscriptionProvider:
       handlers.registerRealtimeTranscriptionProvider ?? noopRegisterRealtimeTranscriptionProvider,

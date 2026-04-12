@@ -1,7 +1,6 @@
 import type {
   OpenClawPluginApi,
   PluginHookExecApprovalRequestedEvent,
-  PluginHookExecApprovalResolvedEvent,
 } from "openclaw/plugin-sdk/core";
 import type { MSTeamsConversationStore } from "./conversation-store.js";
 import { buildConversationReference, type MSTeamsAdapter } from "./messenger.js";
@@ -271,7 +270,7 @@ export function registerMSTeamsExecApprovalHooks(api: OpenClawPluginApi): void {
       });
 
       // Track pending approval for timeout/resolution
-      const expiresInMs = Math.max(0, event.expiresAtMs - Date.now());
+      const expiresInMs = Math.max(0, (event.expiresAtMs ?? Date.now() + 300_000) - Date.now());
       const timeoutId = setTimeout(() => {
         pending.delete(event.id);
       }, expiresInMs);
@@ -306,7 +305,11 @@ export function registerMSTeamsExecApprovalHooks(api: OpenClawPluginApi): void {
       return false;
     }
     try {
-      await api.resolveExecApproval(parsed.approvalId, parsed.action);
+      // TODO: Wire through gateway approval manager after merge
+      const resolve = (
+        api as unknown as { resolveExecApproval?: (id: string, action: string) => Promise<void> }
+      ).resolveExecApproval;
+      await resolve?.(parsed.approvalId, parsed.action);
       log.debug?.(
         `exec approval: resolved ${parsed.approvalId} via card action -> ${parsed.action}`,
       );

@@ -113,7 +113,9 @@ function findTrailingToolResults(
   // Walk backwards from the end to find trailing tool results
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg.role !== "toolResult") break;
+    if (msg.role !== "toolResult") {
+      break;
+    }
     if (msg.toolCallId && pendingIds.has(msg.toolCallId)) {
       results.unshift(msg as unknown as ToolResultMessage);
     }
@@ -283,7 +285,7 @@ export function createCopilotStudioStreamFn(
         }
 
         // Case A: User message (first call or new message)
-        const lastUserMessage = messages.filter((m) => m.role === "user").pop();
+        const lastUserMessage = messages.findLast((m) => m.role === "user");
 
         let userText = "";
         if (lastUserMessage) {
@@ -320,7 +322,9 @@ export function createCopilotStudioStreamFn(
             existing.conversationId = result.conversationId;
             existing.toolRoundTrips = 0;
           } catch (err) {
-            if (err instanceof DeviceCodeRequiredError) throw err;
+            if (err instanceof DeviceCodeRequiredError) {
+              throw err;
+            }
             log(
               `[copilot-studio] continueConversation failed, starting new: ${err instanceof Error ? err.message : String(err)}`,
             );
@@ -368,7 +372,9 @@ export function createCopilotStudioStreamFn(
           lastActiveAt: now,
           toolRoundTrips: 0,
         };
-        if (!sessions.has(sessionKey)) sessions.set(sessionKey, session);
+        if (!sessions.has(sessionKey)) {
+          sessions.set(sessionKey, session);
+        }
 
         const msg = buildResponseMessage(result, toolEvents, model, session);
         stream.push({

@@ -86,6 +86,7 @@ export type {
   SpeechProviderPlugin,
 } from "./plugin-entry.js";
 export type { OpenClawPluginToolContext, OpenClawPluginToolFactory } from "../plugins/types.js";
+export { registerPluginToolProvider } from "../agents/tools/plugin-tool-provider-registry.js";
 export type { PluginToolProviderFn } from "../agents/tools/plugin-tool-provider-registry.js";
 export type {
   PluginHookExecApprovalContext,

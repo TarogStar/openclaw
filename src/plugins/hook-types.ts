@@ -81,7 +81,9 @@ export type PluginHookName =
   | "gateway_stop"
   | "before_dispatch"
   | "reply_dispatch"
-  | "before_install";
+  | "before_install"
+  | "exec_approval_requested"
+  | "exec_approval_resolved";
 
 export const PLUGIN_HOOK_NAMES = [
   "before_model_resolve",
@@ -113,6 +115,8 @@ export const PLUGIN_HOOK_NAMES = [
   "before_dispatch",
   "reply_dispatch",
   "before_install",
+  "exec_approval_requested",
+  "exec_approval_resolved",
 ] as const satisfies readonly PluginHookName[];
 
 type MissingPluginHookNames = Exclude<PluginHookName, (typeof PLUGIN_HOOK_NAMES)[number]>;
@@ -682,6 +686,14 @@ export type PluginHookHandlerMap = {
     event: PluginHookBeforeInstallEvent,
     ctx: PluginHookBeforeInstallContext,
   ) => Promise<PluginHookBeforeInstallResult | void> | PluginHookBeforeInstallResult | void;
+  exec_approval_requested: (
+    event: PluginHookExecApprovalRequestedEvent,
+    ctx: PluginHookExecApprovalContext,
+  ) => Promise<void> | void;
+  exec_approval_resolved: (
+    event: PluginHookExecApprovalResolvedEvent,
+    ctx: PluginHookExecApprovalContext,
+  ) => Promise<void> | void;
 };
 
 export type PluginHookRegistration<K extends PluginHookName = PluginHookName> = {
@@ -698,16 +710,25 @@ export type PluginHookRegistration<K extends PluginHookName = PluginHookName> = 
 
 export type PluginHookExecApprovalRequestedEvent = {
   id: string;
-  request: { command: string; agentId?: string; sessionId?: string };
+  command: string;
   createdAtMs: number;
-  expiresAtMs?: number;
+  expiresAtMs: number;
+  cwd?: string;
+  agentId?: string;
+  host?: string;
+  sessionId?: string;
+  sessionKey?: string;
+  security?: unknown;
+  ask?: unknown;
 };
 
 export type PluginHookExecApprovalResolvedEvent = {
   id: string;
-  decision: "approved" | "denied";
-  request: { command: string; agentId?: string; sessionId?: string };
+  decision: string;
+  command: string;
   resolvedAtMs: number;
+  agentId?: string;
+  sessionId?: string;
 };
 
 export type PluginHookExecApprovalContext = {

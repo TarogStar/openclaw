@@ -25,7 +25,7 @@ function buildToolProvider(
     const result = await client.query(prompt);
     const citations = result.activities
       .filter((a) => a.type === "event" && a.name === "citation")
-      .map((a) => String(a.value ?? ""))
+      .map((a) => (typeof a.value === "string" ? a.value : JSON.stringify(a.value ?? "")))
       .filter(Boolean);
     return {
       content: result.text,
@@ -84,28 +84,29 @@ const plugin = {
         id: "copilot-studio",
         label: "Copilot Studio",
         auth: [],
+        createStreamFn: () => createCopilotStudioStreamFn(client, log),
         catalog: {
           async run() {
             return {
-              models: [
-                {
-                  id: "default",
-                  name: "Copilot Studio Agent",
-                  api: "copilot-studio" as any,
-                  reasoning: false,
-                  input: ["text"],
-                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                  contextWindow: 128000,
-                  maxTokens: 4096,
-                },
-              ],
-            } as any;
+              provider: {
+                baseUrl: config.directConnectUrl,
+                api: "copilot-studio",
+                models: [
+                  {
+                    id: "default",
+                    name: "Copilot Studio Agent",
+                    reasoning: false,
+                    input: ["text"],
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: 128000,
+                    maxTokens: 4096,
+                  },
+                ],
+              },
+            };
           },
         },
       });
-
-      // Register stream function so the Pi SDK pipeline routes to CS
-      api.registerStreamFn("copilot-studio", createCopilotStudioStreamFn(client, log));
 
       // Clear conversation state on session reset
       api.on("before_reset", (_event, ctx) => {

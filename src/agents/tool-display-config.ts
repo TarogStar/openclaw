@@ -481,6 +481,21 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Web Fetch",
       detailKeys: ["url", "extractMode", "maxChars"],
     },
+    email: {
+      emoji: "📧",
+      title: "Email",
+      detailKeys: ["action", "query"],
+    },
+    calendar: {
+      emoji: "📅",
+      title: "Calendar",
+      detailKeys: ["action", "query"],
+    },
+    tool_load: {
+      emoji: "🔌",
+      title: "Load Tool",
+      detailKeys: ["toolName"],
+    },
     code_execution: {
       emoji: "🧮",
       title: "Code Execution",

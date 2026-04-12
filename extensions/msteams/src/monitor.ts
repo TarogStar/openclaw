@@ -371,7 +371,6 @@ export async function monitorMSTeamsProvider(
     log.error("msteams server error", { error: formatUnknownError(err) });
   });
 
-
   const shutdown = async () => {
     log.info("shutting down msteams provider");
     httpServer.closeAllConnections();

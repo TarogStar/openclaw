@@ -48,21 +48,20 @@ export type {
   OpenClawPluginConfigSchema,
   OpenClawPluginService,
   OpenClawPluginServiceContext,
-  PluginAgentRunnerFn,
-  PluginAgentRunnerParams,
-  PluginHookExecApprovalContext,
-  PluginHookExecApprovalRequestedEvent,
-  PluginHookExecApprovalResolvedEvent,
   PluginLogger,
-  PluginToolProviderFn,
   ProviderAuthContext,
   ProviderAuthResult,
   ProviderPreparedRuntimeAuth,
   ProviderRuntimeModel,
   RealtimeTranscriptionProviderPlugin,
   SpeechProviderPlugin,
-  StreamFn,
 } from "../plugins/types.js";
+export type {
+  PluginHookExecApprovalContext,
+  PluginHookExecApprovalRequestedEvent,
+  PluginHookExecApprovalResolvedEvent,
+} from "../plugins/hook-types.js";
+export type { PluginToolProviderFn } from "../agents/tools/plugin-tool-provider-registry.js";
 export type { ResolvedProviderRuntimeAuth } from "../plugins/runtime/model-auth-types.js";
 export type {
   PluginRuntime,

@@ -24,12 +24,12 @@ function summarizeError(err: unknown): string {
 export function registerMSTeamsSubagentHooks(api: OpenClawPluginApi) {
   api.on("subagent_spawning", async (event) => {
     if (!event.threadRequested) {
-      return;
+      return undefined;
     }
     const channel = event.requester?.channel?.trim().toLowerCase();
     if (channel !== "msteams") {
       // Ignore non-MSTeams channels so other channel plugins can handle their own.
-      return;
+      return undefined;
     }
 
     try {
@@ -61,16 +61,16 @@ export function registerMSTeamsSubagentHooks(api: OpenClawPluginApi) {
 
   api.on("subagent_delivery_target", (event) => {
     if (!event.expectsCompletionMessage) {
-      return;
+      return undefined;
     }
     const requesterChannel = event.requesterOrigin?.channel?.trim().toLowerCase();
     if (requesterChannel !== "msteams") {
-      return;
+      return undefined;
     }
 
     const binding = bindingsBySessionKey.get(event.childSessionKey);
     if (!binding) {
-      return;
+      return undefined;
     }
 
     return {

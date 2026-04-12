@@ -304,7 +304,14 @@ export function createOpenClawTools(
       config: resolvedConfig,
       sandboxed: options?.sandboxed,
     }),
-    ...collectPresentOpenClawTools([webSearchTool, webFetchTool, emailTool, calendarTool, imageTool, pdfTool]),
+    ...collectPresentOpenClawTools([
+      webSearchTool,
+      webFetchTool,
+      emailTool,
+      calendarTool,
+      imageTool,
+      pdfTool,
+    ]),
   ];
 
   if (options?.disablePluginTools) {

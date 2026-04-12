@@ -10,7 +10,6 @@ import { coerceSecretRef } from "openclaw/plugin-sdk/provider-auth";
 import { normalizeString } from "./comment-shared.js";
 import type {
   FeishuConfig,
-  FeishuAccountConfig,
   FeishuDefaultAccountSelectionSource,
   FeishuDomain,
   ResolvedFeishuAccount,
@@ -266,7 +265,7 @@ function buildResolvedFeishuAccount(params: {
   const enabled = baseEnabled && accountEnabled;
   const baseCreds = resolveFeishuBaseCredentials(merged, params.baseMode);
   const eventSecrets = resolveFeishuEventSecrets(merged, params.eventSecretMode);
-  const accountName = (merged as FeishuAccountConfig).name;
+  const accountName = (merged as Record<string, unknown>).name as string | undefined;
 
   return {
     accountId,
