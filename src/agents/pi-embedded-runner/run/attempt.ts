@@ -137,6 +137,7 @@ import {
   clearActiveEmbeddedRun,
   type EmbeddedPiQueueHandle,
   setActiveEmbeddedRun,
+  touchStreamingActivity,
   updateActiveEmbeddedRunSnapshot,
 } from "../runs.js";
 import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
@@ -1460,12 +1461,27 @@ export async function runEmbeddedAttempt(
           onToolResult: params.onToolResult,
           onReasoningStream: params.onReasoningStream,
           onReasoningEnd: params.onReasoningEnd,
-          onBlockReply: params.onBlockReply,
+          onBlockReply: params.onBlockReply
+            ? (payload) => {
+                touchStreamingActivity(params.sessionId);
+                return params.onBlockReply!(payload);
+              }
+            : undefined,
           onBlockReplyFlush: params.onBlockReplyFlush,
           blockReplyBreak: params.blockReplyBreak,
           blockReplyChunking: params.blockReplyChunking,
-          onPartialReply: params.onPartialReply,
-          onAssistantMessageStart: params.onAssistantMessageStart,
+          onPartialReply: params.onPartialReply
+            ? (payload) => {
+                touchStreamingActivity(params.sessionId);
+                return params.onPartialReply!(payload);
+              }
+            : undefined,
+          onAssistantMessageStart: params.onAssistantMessageStart
+            ? () => {
+                touchStreamingActivity(params.sessionId);
+                return params.onAssistantMessageStart!();
+              }
+            : undefined,
           onAgentEvent: params.onAgentEvent,
           enforceFinalTag: params.enforceFinalTag,
           silentExpected: params.silentExpected,
@@ -1510,6 +1526,10 @@ export async function runEmbeddedAttempt(
           abortRun();
         },
         abort: abortRun,
+        forceEndStreaming: () => {
+          unsubscribe();
+          void activeSession.abort();
+        },
       };
       let lastAssistant: AgentMessage | undefined;
       let currentAttemptAssistant: EmbeddedRunAttemptResult["currentAttemptAssistant"];

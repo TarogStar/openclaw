@@ -6,8 +6,10 @@ import {
   clearActiveEmbeddedRun,
   consumeEmbeddedRunModelSwitch,
   getActiveEmbeddedRunSnapshot,
+  isEmbeddedPiRunStreaming,
   requestEmbeddedRunModelSwitch,
   setActiveEmbeddedRun,
+  touchStreamingActivity,
   updateActiveEmbeddedRunSnapshot,
   waitForActiveEmbeddedRuns,
 } from "./runs.js";
@@ -171,5 +173,83 @@ describe("pi-embedded runner run registry", () => {
     clearActiveEmbeddedRun("session-clear-switch", handle);
 
     expect(consumeEmbeddedRunModelSwitch("session-clear-switch")).toBeUndefined();
+  });
+
+  describe("streaming activity tracking", () => {
+    it("reports streaming when activity is fresh", () => {
+      const handle = createRunHandle();
+      setActiveEmbeddedRun("session-fresh", handle);
+
+      // setActiveEmbeddedRun initializes the timestamp
+      expect(isEmbeddedPiRunStreaming("session-fresh")).toBe(true);
+    });
+
+    it("touchStreamingActivity refreshes the staleness timestamp", () => {
+      vi.useFakeTimers();
+      try {
+        const handle = createRunHandle();
+        setActiveEmbeddedRun("session-touch", handle);
+
+        // Advance close to (but not past) the threshold
+        vi.advanceTimersByTime(__testing.STREAMING_STALENESS_THRESHOLD_MS - 1_000);
+        touchStreamingActivity("session-touch");
+
+        // Advance another threshold minus a bit — would be stale without the touch
+        vi.advanceTimersByTime(__testing.STREAMING_STALENESS_THRESHOLD_MS - 1_000);
+        expect(isEmbeddedPiRunStreaming("session-touch")).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("force-ends streaming when activity exceeds staleness threshold", () => {
+      vi.useFakeTimers();
+      try {
+        const forceEnd = vi.fn();
+        const handle = createRunHandle();
+        handle.forceEndStreaming = forceEnd;
+        setActiveEmbeddedRun("session-stale", handle);
+
+        vi.advanceTimersByTime(__testing.STREAMING_STALENESS_THRESHOLD_MS + 1);
+
+        expect(isEmbeddedPiRunStreaming("session-stale")).toBe(false);
+        expect(forceEnd).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cleans up tracking maps after force-ending a stale stream", () => {
+      vi.useFakeTimers();
+      try {
+        const handle = createRunHandle();
+        handle.forceEndStreaming = vi.fn();
+        setActiveEmbeddedRun("session-cleanup", handle);
+
+        vi.advanceTimersByTime(__testing.STREAMING_STALENESS_THRESHOLD_MS + 1);
+        isEmbeddedPiRunStreaming("session-cleanup");
+
+        // Run is no longer active after force-end cleanup
+        expect(isEmbeddedPiRunStreaming("session-cleanup")).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not force-end when handle has no forceEndStreaming", () => {
+      vi.useFakeTimers();
+      try {
+        const handle = createRunHandle();
+        // no forceEndStreaming set — uses optional chaining
+        setActiveEmbeddedRun("session-no-force", handle);
+
+        vi.advanceTimersByTime(__testing.STREAMING_STALENESS_THRESHOLD_MS + 1);
+
+        // Should still return false (stale) but not throw
+        expect(isEmbeddedPiRunStreaming("session-no-force")).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });
