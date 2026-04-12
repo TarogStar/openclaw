@@ -1,6 +1,7 @@
 // Shared speech-provider implementation helpers for bundled and third-party plugins.
 
 export type { SpeechProviderPlugin } from "../plugins/types.js";
+export type { ResolvedTtsConfig, ResolvedTtsModelOverrides } from "../tts/tts-types.js";
 export type {
   SpeechDirectiveTokenParseContext,
   SpeechDirectiveTokenParseResult,
@@ -20,9 +21,26 @@ export type {
 } from "../tts/provider-types.js";
 
 export {
+  scheduleCleanup,
+  summarizeText,
   normalizeApplyTextNormalization,
   normalizeLanguageCode,
   normalizeSeed,
   requireInRange,
 } from "../tts/tts-core.js";
 export { parseTtsDirectives } from "../tts/directives.js";
+export {
+  canonicalizeSpeechProviderId,
+  getSpeechProvider,
+  listSpeechProviders,
+  normalizeSpeechProviderId,
+} from "../tts/provider-registry.js";
+export { normalizeTtsAutoMode, TTS_AUTO_MODES } from "../tts/tts-auto-mode.js";
+export {
+  asBoolean,
+  asFiniteNumber,
+  asObject,
+  readResponseTextLimited,
+  trimToUndefined,
+  truncateErrorDetail,
+} from "../tts/provider-error-utils.js";

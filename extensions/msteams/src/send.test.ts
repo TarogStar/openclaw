@@ -5,8 +5,13 @@ import { deleteMessageMSTeams, editMessageMSTeams, sendMessageMSTeams } from "./
 const mockState = vi.hoisted(() => ({
   loadOutboundMediaFromUrl: vi.fn(),
   resolveMSTeamsSendContext: vi.fn(),
+  resolveMarkdownTableMode: vi.fn(() => "off"),
+  convertMarkdownTables: vi.fn((text: string) => text),
+  runtimeResolveMarkdownTableMode: vi.fn(() => "off"),
+  runtimeConvertMarkdownTables: vi.fn((text: string) => text),
   requiresFileConsent: vi.fn(),
   prepareFileConsentActivity: vi.fn(),
+  prepareFileConsentActivityFs: vi.fn(),
   extractFilename: vi.fn(async () => "fallback.bin"),
   sendMSTeamsMessages: vi.fn(),
   uploadAndShareSharePoint: vi.fn(),
@@ -14,9 +19,21 @@ const mockState = vi.hoisted(() => ({
   buildTeamsFileInfoCard: vi.fn(),
 }));
 
-vi.mock("../runtime-api.js", () => ({
+vi.mock("openclaw/plugin-sdk/msteams", () => ({
   loadOutboundMediaFromUrl: mockState.loadOutboundMediaFromUrl,
 }));
+
+vi.mock("openclaw/plugin-sdk/config-runtime", () => ({
+  resolveMarkdownTableMode: mockState.resolveMarkdownTableMode,
+}));
+
+vi.mock("openclaw/plugin-sdk/text-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/text-runtime")>();
+  return {
+    ...actual,
+    convertMarkdownTables: mockState.convertMarkdownTables,
+  };
+});
 
 vi.mock("./send-context.js", () => ({
   resolveMSTeamsSendContext: mockState.resolveMSTeamsSendContext,
@@ -25,6 +42,7 @@ vi.mock("./send-context.js", () => ({
 vi.mock("./file-consent-helpers.js", () => ({
   requiresFileConsent: mockState.requiresFileConsent,
   prepareFileConsentActivity: mockState.prepareFileConsentActivity,
+  prepareFileConsentActivityFs: mockState.prepareFileConsentActivityFs,
 }));
 
 vi.mock("./media-helpers.js", () => ({
@@ -41,8 +59,8 @@ vi.mock("./runtime.js", () => ({
   getMSTeamsRuntime: () => ({
     channel: {
       text: {
-        resolveMarkdownTableMode: () => "off",
-        convertMarkdownTables: (text: string) => text,
+        resolveMarkdownTableMode: mockState.runtimeResolveMarkdownTableMode,
+        convertMarkdownTables: mockState.runtimeConvertMarkdownTables,
       },
     },
   }),
@@ -140,8 +158,17 @@ describe("sendMessageMSTeams", () => {
   beforeEach(() => {
     mockState.loadOutboundMediaFromUrl.mockReset();
     mockState.resolveMSTeamsSendContext.mockReset();
+    mockState.resolveMarkdownTableMode.mockReset();
+    mockState.resolveMarkdownTableMode.mockReturnValue("off");
+    mockState.convertMarkdownTables.mockReset();
+    mockState.convertMarkdownTables.mockImplementation((text: string) => text);
+    mockState.runtimeResolveMarkdownTableMode.mockReset();
+    mockState.runtimeResolveMarkdownTableMode.mockReturnValue("off");
+    mockState.runtimeConvertMarkdownTables.mockReset();
+    mockState.runtimeConvertMarkdownTables.mockImplementation((text: string) => text);
     mockState.requiresFileConsent.mockReset();
     mockState.prepareFileConsentActivity.mockReset();
+    mockState.prepareFileConsentActivityFs.mockReset();
     mockState.extractFilename.mockReset();
     mockState.sendMSTeamsMessages.mockReset();
     mockState.uploadAndShareSharePoint.mockReset();
@@ -199,6 +226,34 @@ describe("sendMessageMSTeams", () => {
         ],
       }),
     );
+  });
+
+  it("sends with provided cfg even when Teams runtime text helpers are unavailable", async () => {
+    mockState.runtimeResolveMarkdownTableMode.mockImplementation(() => {
+      throw new Error("MSTeams runtime not initialized");
+    });
+    mockState.runtimeConvertMarkdownTables.mockImplementation(() => {
+      throw new Error("MSTeams runtime not initialized");
+    });
+    mockState.resolveMarkdownTableMode.mockReturnValue("off");
+    mockState.convertMarkdownTables.mockReturnValue("hello");
+
+    await expect(
+      sendMessageMSTeams({
+        cfg: {} as OpenClawConfig,
+        to: "conversation:19:conversation@thread.tacv2",
+        text: "hello",
+      }),
+    ).resolves.toEqual({
+      messageId: "message-1",
+      conversationId: "19:conversation@thread.tacv2",
+    });
+
+    expect(mockState.resolveMarkdownTableMode).toHaveBeenCalledWith({
+      cfg: {},
+      channel: "msteams",
+    });
+    expect(mockState.convertMarkdownTables).toHaveBeenCalledWith("hello", "off");
   });
 
   it("uses graphChatId instead of conversationId when uploading to SharePoint", async () => {
