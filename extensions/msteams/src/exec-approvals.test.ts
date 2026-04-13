@@ -1,5 +1,11 @@
 import type { PluginHookExecApprovalRequestedEvent } from "openclaw/plugin-sdk/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("openclaw/plugin-sdk/approval-gateway-runtime", () => ({
+  resolveApprovalOverGateway: vi.fn(async () => {}),
+}));
+
+import { resolveApprovalOverGateway } from "openclaw/plugin-sdk/approval-gateway-runtime";
 import {
   buildExecApprovalCard,
   buildResolvedCard,
@@ -26,7 +32,6 @@ function createFakeApi(configOverrides?: Record<string, unknown>) {
       },
     },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-    resolveExecApproval: vi.fn(async () => {}),
     on(event: string, handler: (...args: unknown[]) => unknown) {
       hooks[event] ??= [];
       hooks[event].push(handler);
@@ -264,6 +269,10 @@ describe("buildResolvedCard", () => {
 // -----------------------------------------------------------------------
 
 describe("registerMSTeamsExecApprovalHooks", () => {
+  afterEach(() => {
+    vi.mocked(resolveApprovalOverGateway).mockClear();
+  });
+
   it("registers exec_approval_requested and exec_approval_resolved hooks", () => {
     const api = createFakeApi();
     registerMSTeamsExecApprovalHooks(api as never);
@@ -353,7 +362,13 @@ describe("registerMSTeamsExecApprovalHooks", () => {
     });
 
     expect(result).toBe(true);
-    expect(api.resolveExecApproval).toHaveBeenCalledWith("test-123", "allow-once");
+    expect(resolveApprovalOverGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approvalId: "test-123",
+        decision: "allow-once",
+        clientDisplayName: "Teams Adaptive Card",
+      }),
+    );
   });
 
   it("global action handler returns false for non-approval data", async () => {

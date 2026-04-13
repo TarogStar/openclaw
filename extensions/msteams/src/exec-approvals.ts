@@ -1,3 +1,4 @@
+import { resolveApprovalOverGateway } from "openclaw/plugin-sdk/approval-gateway-runtime";
 import type {
   OpenClawPluginApi,
   PluginHookExecApprovalRequestedEvent,
@@ -305,11 +306,12 @@ export function registerMSTeamsExecApprovalHooks(api: OpenClawPluginApi): void {
       return false;
     }
     try {
-      // TODO: Wire through gateway approval manager after merge
-      const resolve = (
-        api as unknown as { resolveExecApproval?: (id: string, action: string) => Promise<void> }
-      ).resolveExecApproval;
-      await resolve?.(parsed.approvalId, parsed.action);
+      await resolveApprovalOverGateway({
+        cfg: api.config,
+        approvalId: parsed.approvalId,
+        decision: parsed.action,
+        clientDisplayName: "Teams Adaptive Card",
+      });
       log.debug?.(
         `exec approval: resolved ${parsed.approvalId} via card action -> ${parsed.action}`,
       );
