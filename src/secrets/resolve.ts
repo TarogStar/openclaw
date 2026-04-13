@@ -260,7 +260,11 @@ async function assertSecurePath(params: {
 
   if (process.platform !== "win32" && typeof process.getuid === "function" && stat.uid != null) {
     const uid = process.getuid();
-    if (stat.uid !== uid) {
+    // Allow root-owned binaries in SIP-protected system directories (macOS).
+    // /usr/bin/security and similar system tools are always uid=0.
+    const isSystemOwnedBinary =
+      stat.uid === 0 && process.platform === "darwin" && /^\/(?:usr\/)?s?bin\//.test(effectivePath);
+    if (stat.uid !== uid && !isSystemOwnedBinary) {
       throw new Error(
         `${params.label} must be owned by the current user (uid=${uid}): ${effectivePath}`,
       );
@@ -679,18 +683,39 @@ async function resolveExecRefs(params: {
     });
   }
 
-  const requestPayload = {
-    protocolVersion: 1,
-    provider: params.providerName,
-    ids,
-  };
-  const input = JSON.stringify(requestPayload);
-  if (Buffer.byteLength(input, "utf8") > params.limits.maxBatchBytes) {
-    throw providerResolutionError({
-      source: "exec",
+  // Template arg mode: when args contain ${id}, interpolate the id directly
+  // into the command args and treat stdout as a raw single value.
+  // This enables simple providers like macOS Keychain (`/usr/bin/security`).
+  const hasTemplateArgs = (params.providerConfig.args ?? []).some((arg) => arg.includes("${id}"));
+  let input: string | undefined;
+  let effectiveArgs = params.providerConfig.args ?? [];
+  let effectiveJsonOnly = params.providerConfig.jsonOnly ?? true;
+
+  if (hasTemplateArgs) {
+    if (ids.length !== 1) {
+      throw providerResolutionError({
+        source: "exec",
+        provider: params.providerName,
+        message: `Exec provider "${params.providerName}" uses \${id} template args but received ${ids.length} ids (template mode supports exactly 1).`,
+      });
+    }
+    effectiveArgs = effectiveArgs.map((arg) => arg.replaceAll("${id}", ids[0]));
+    effectiveJsonOnly = false;
+    input = undefined;
+  } else {
+    const requestPayload = {
+      protocolVersion: 1,
       provider: params.providerName,
-      message: `Exec provider "${params.providerName}" request exceeded maxBatchBytes (${params.limits.maxBatchBytes}).`,
-    });
+      ids,
+    };
+    input = JSON.stringify(requestPayload);
+    if (Buffer.byteLength(input, "utf8") > params.limits.maxBatchBytes) {
+      throw providerResolutionError({
+        source: "exec",
+        provider: params.providerName,
+        message: `Exec provider "${params.providerName}" request exceeded maxBatchBytes (${params.limits.maxBatchBytes}).`,
+      });
+    }
   }
 
   const childEnv: NodeJS.ProcessEnv = {};
@@ -713,16 +738,14 @@ async function resolveExecRefs(params: {
     params.providerConfig.maxOutputBytes,
     DEFAULT_EXEC_MAX_OUTPUT_BYTES,
   );
-  const jsonOnly = params.providerConfig.jsonOnly ?? true;
-
   let result: ExecRunResult;
   try {
     result = await runExecResolver({
       command: secureCommandPath,
-      args: params.providerConfig.args ?? [],
+      args: effectiveArgs,
       cwd: path.dirname(secureCommandPath),
       env: childEnv,
-      input,
+      input: input ?? "",
       timeoutMs,
       noOutputTimeoutMs,
       maxOutputBytes,
@@ -762,7 +785,7 @@ async function resolveExecRefs(params: {
       providerName: params.providerName,
       ids,
       stdout: result.stdout,
-      jsonOnly,
+      jsonOnly: effectiveJsonOnly,
     });
   } catch (err) {
     throwUnknownProviderResolutionError({
