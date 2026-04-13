@@ -163,6 +163,14 @@ type ChromeVersion = {
   "User-Agent"?: string;
 };
 
+// Loopback CDP fast path: bypass fetchWithSsrFGuard for 127.0.0.1/[::1]/localhost.
+// Rationale: the SSRF guard's pinned-DNS dispatcher path adds >1s of hang/overhead
+// for loopback requests in the gateway runtime, causing probe timeouts that prevent
+// the browser tool from detecting its own managed Chrome. Local CDP endpoints are
+// intrinsically trusted (loopback-only per resolveSandboxBrowserProfileInput) and
+// do not need SSRF enforcement.
+const LOOPBACK_CDP_HOST_RE = /^https?:\/\/(127\.0\.0\.1|\[::1\]|localhost)(:|\/|$)/i;
+
 async function fetchChromeVersion(
   cdpUrl: string,
   timeoutMs = CHROME_REACHABILITY_TIMEOUT_MS,
@@ -172,6 +180,17 @@ async function fetchChromeVersion(
   const t = setTimeout(ctrl.abort.bind(ctrl), timeoutMs);
   try {
     const versionUrl = appendCdpPath(cdpUrl, "/json/version");
+    if (LOOPBACK_CDP_HOST_RE.test(versionUrl)) {
+      const res = await fetch(versionUrl, { signal: ctrl.signal });
+      if (!res.ok) {
+        return null;
+      }
+      const data = (await res.json()) as ChromeVersion;
+      if (!data || typeof data !== "object") {
+        return null;
+      }
+      return data;
+    }
     const { response, release } = await fetchCdpChecked(
       versionUrl,
       timeoutMs,
