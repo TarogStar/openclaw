@@ -8,6 +8,7 @@ import {
   AgentModelSchema,
   MemorySearchSchema,
 } from "./zod-schema.agent-runtime.js";
+import { AutoContinueSchema } from "./zod-schema.auto-continue.js";
 import {
   BlockStreamingChunkSchema,
   BlockStreamingCoalesceSchema,
@@ -191,6 +192,7 @@ export const AgentDefaultsSchema = z
     typingMode: TypingModeSchema.optional(),
     heartbeat: HeartbeatSchema,
     maxConcurrent: z.number().int().positive().optional(),
+    autoContinue: AutoContinueSchema,
     subagents: z
       .object({
         allowAgents: z.array(z.string()).optional(),

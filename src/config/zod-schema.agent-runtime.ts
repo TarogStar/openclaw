@@ -6,6 +6,7 @@ import {
   normalizeOptionalString,
 } from "../shared/string-coerce.js";
 import { AgentModelSchema } from "./zod-schema.agent-model.js";
+import { AutoContinueSchema } from "./zod-schema.auto-continue.js";
 import {
   GroupChatSchema,
   HumanDelaySchema,
@@ -835,6 +836,7 @@ export const AgentEntrySchema = z
     memorySearch: MemorySearchSchema,
     humanDelay: HumanDelaySchema.optional(),
     heartbeat: HeartbeatSchema,
+    autoContinue: AutoContinueSchema,
     identity: IdentitySchema,
     groupChat: GroupChatSchema,
     subagents: z

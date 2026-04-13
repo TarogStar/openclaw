@@ -3,6 +3,7 @@ import type {
   AgentModelConfig,
   AgentSandboxConfig,
 } from "./types.agents-shared.js";
+import type { AutoContinueConfig } from "./types.auto-continue.js";
 import type {
   BlockStreamingChunkConfig,
   BlockStreamingCoalesceConfig,
@@ -325,6 +326,12 @@ export type AgentDefaultsConfig = {
   };
   /** Max concurrent agent runs across all conversations. Default: 1 (sequential). */
   maxConcurrent?: number;
+  /**
+   * Auto-continue mode: inject a synthetic user prompt when a turn ends without
+   * a tool call, until a terminal signal or iteration cap halts the loop.
+   * See types.auto-continue.ts for the full config shape. Default: disabled.
+   */
+  autoContinue?: AutoContinueConfig;
   /** Sub-agent defaults (spawned via sessions_spawn). */
   subagents?: {
     /** Default allowlist of target agent ids for sessions_spawn. Use "*" to allow any. */

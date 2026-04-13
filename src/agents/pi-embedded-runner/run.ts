@@ -70,6 +70,7 @@ import {
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
 import { derivePromptTokens, normalizeUsage, type UsageLike } from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
+import { resolveAutoContinueConfig, shouldAutoContinue } from "./auto-continue.js";
 import { runPostCompactionSideEffects } from "./compact.js";
 import { buildEmbeddedCompactionRuntimeContext } from "./compaction-runtime-context.js";
 import { runContextEngineMaintenance } from "./context-engine-maintenance.js";
@@ -570,6 +571,14 @@ export async function runEmbeddedPiAgent(
         let lastTurnTotal: number | undefined;
         // Accumulate tool names loaded via tool_load across attempts (lazy loading).
         let lazyLoadedToolNames: string[] = [];
+        // Auto-continue: inject synthetic user prompts when the model ends a turn
+        // without a tool call. Opt-in via agents.*.autoContinue.enabled.
+        const autoContinueCfg = resolveAutoContinueConfig({
+          cfg: params.config,
+          agentId: params.agentId,
+        });
+        let autoContinueIterations = 0;
+        let pendingSyntheticPrompt: string | null = null;
         while (true) {
           if (runLoopIterations >= MAX_RUN_LOOP_ITERATIONS) {
             const message =
@@ -610,8 +619,13 @@ export async function runEmbeddedPiAgent(
           attemptedThinking.add(thinkLevel);
           await fs.mkdir(resolvedWorkspace, { recursive: true });
 
+          // Auto-continue overrides the user prompt with a synthetic continuation
+          // message when the previous turn ended without a tool call. Cleared after
+          // consumption so subsequent retries go back to the original prompt.
+          const sourcePrompt = pendingSyntheticPrompt ?? params.prompt;
+          pendingSyntheticPrompt = null;
           const basePrompt =
-            provider === "anthropic" ? scrubAnthropicRefusalMagic(params.prompt) : params.prompt;
+            provider === "anthropic" ? scrubAnthropicRefusalMagic(sourcePrompt) : sourcePrompt;
           const promptAdditions = [
             ackExecutionFastPathInstruction,
             planningOnlyRetryInstruction,
@@ -802,6 +816,35 @@ export async function runEmbeddedPiAgent(
                 `(total loaded: ${lazyLoadedToolNames.length})`,
             );
             continue;
+          }
+          // Auto-continue: inject a synthetic user prompt when the model ended the
+          // turn without a tool call, provided we're enabled and haven't hit the cap.
+          if (autoContinueCfg.enabled) {
+            const autoDecision = shouldAutoContinue({
+              attempt,
+              autoContinueCfg,
+              iterations: autoContinueIterations,
+            });
+            if (autoDecision.continue) {
+              autoContinueIterations += 1;
+              log.info(
+                `[auto-continue] iteration=${autoContinueIterations}/${autoContinueCfg.maxIterations} ` +
+                  `sessionKey=${params.sessionKey ?? params.sessionId}`,
+              );
+              if (autoContinueCfg.cooldownMs > 0) {
+                await new Promise((r) => setTimeout(r, autoContinueCfg.cooldownMs));
+              }
+              pendingSyntheticPrompt = autoContinueCfg.prompt;
+              continue;
+            }
+            if (autoContinueIterations > 0) {
+              log.info(
+                `[auto-continue] exiting chain reason=${autoDecision.reason} ` +
+                  `iterations=${autoContinueIterations}/${autoContinueCfg.maxIterations} ` +
+                  `sessionKey=${params.sessionKey ?? params.sessionId}`,
+              );
+              autoContinueIterations = 0;
+            }
           }
           const requestedSelection = shouldSwitchToLiveModel({
             cfg: params.config,

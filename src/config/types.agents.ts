@@ -5,6 +5,7 @@ import type {
   AgentModelConfig,
   AgentSandboxConfig,
 } from "./types.agents-shared.js";
+import type { AutoContinueConfig } from "./types.auto-continue.js";
 import type { HumanDelayConfig, IdentityConfig } from "./types.base.js";
 import type { GroupChatConfig } from "./types.messages.js";
 import type { AgentToolsConfig, MemorySearchConfig } from "./types.tools.js";
@@ -88,6 +89,11 @@ export type AgentConfig = {
   humanDelay?: HumanDelayConfig;
   /** Optional per-agent heartbeat overrides. */
   heartbeat?: AgentDefaultsConfig["heartbeat"];
+  /**
+   * Per-agent auto-continue override. Merged shallow over agents.defaults.autoContinue.
+   * See types.auto-continue.ts.
+   */
+  autoContinue?: AutoContinueConfig;
   identity?: IdentityConfig;
   groupChat?: GroupChatConfig;
   subagents?: {
