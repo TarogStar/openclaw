@@ -387,6 +387,8 @@ export function buildAgentSystemPrompt(params: {
   ownerDisplaySecret?: string;
   reasoningTagHint?: boolean;
   toolNames?: string[];
+  /** Tool names that are deferred (lazy loading: listed but schemas not loaded). */
+  deferredToolNames?: Set<string>;
   toolSummaries?: Record<string, string>;
   modelAliasLines?: string[];
   userTimezone?: string;
@@ -521,16 +523,29 @@ export function buildAgentSystemPrompt(params: {
   const extraTools = Array.from(
     new Set(normalizedTools.filter((tool) => !toolOrder.includes(tool))),
   );
+  const deferredSet = params.deferredToolNames ?? new Set<string>();
   const enabledTools = toolOrder.filter((tool) => availableTools.has(tool));
   const toolLines = enabledTools.map((tool) => {
     const summary = coreToolSummaries[tool] ?? externalToolSummaries.get(tool);
     const name = resolveToolName(tool);
-    return summary ? `- ${name}: ${summary}` : `- ${name}`;
+    const deferred = deferredSet.has(tool) || deferredSet.has(name);
+    const suffix = deferred ? " [load required]" : "";
+    return summary ? `- ${name}: ${summary}${suffix}` : `- ${name}${suffix}`;
   });
   for (const tool of extraTools.toSorted()) {
     const summary = coreToolSummaries[tool] ?? externalToolSummaries.get(tool);
     const name = resolveToolName(tool);
-    toolLines.push(summary ? `- ${name}: ${summary}` : `- ${name}`);
+    const deferred = deferredSet.has(tool) || deferredSet.has(name);
+    const suffix = deferred ? " [load required]" : "";
+    toolLines.push(summary ? `- ${name}: ${summary}${suffix}` : `- ${name}${suffix}`);
+  }
+  if (deferredSet.size > 0) {
+    toolLines.push(
+      "",
+      "Tools marked [load required] need loading before use. " +
+        "Call tool_load with the tool name(s) to load them. " +
+        "After calling tool_load, STOP your response. Tools appear on your next turn.",
+    );
   }
 
   const hasGateway = availableTools.has("gateway");

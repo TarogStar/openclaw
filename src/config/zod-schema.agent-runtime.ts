@@ -604,6 +604,13 @@ export const AgentToolsSchema = z
       .optional(),
     exec: AgentToolExecSchema,
     fs: ToolFsSchema,
+    lazyLoading: z
+      .object({
+        enabled: z.boolean().optional(),
+        coreTools: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
     loopDetection: ToolLoopDetectionSchema,
     sandbox: z
       .object({

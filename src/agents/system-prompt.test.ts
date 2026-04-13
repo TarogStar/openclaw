@@ -918,3 +918,48 @@ describe("buildSubagentSystemPrompt", () => {
     }
   });
 });
+
+describe("buildAgentSystemPrompt deferred tool labels", () => {
+  it("marks deferred tools with [load required]", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/test",
+      toolNames: ["read", "exec", "email", "calendar"],
+      deferredToolNames: new Set(["email", "calendar"]),
+    });
+    expect(prompt).toContain("email");
+    expect(prompt).toContain("calendar");
+    expect(prompt).toMatch(/email.*\[load required\]/);
+    expect(prompt).toMatch(/calendar.*\[load required\]/);
+    expect(prompt).not.toMatch(/read.*\[load required\]/);
+    expect(prompt).not.toMatch(/exec.*\[load required\]/);
+  });
+
+  it("includes tool_load guidance when deferred tools exist", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/test",
+      toolNames: ["read", "email"],
+      deferredToolNames: new Set(["email"]),
+    });
+    expect(prompt).toContain("Call tool_load");
+    expect(prompt).toContain("STOP your response");
+  });
+
+  it("does not add [load required] when deferredToolNames is empty", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/test",
+      toolNames: ["read", "exec"],
+      deferredToolNames: new Set(),
+    });
+    expect(prompt).not.toContain("[load required]");
+    expect(prompt).not.toContain("Call tool_load");
+  });
+
+  it("does not add [load required] when deferredToolNames is undefined", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/test",
+      toolNames: ["read", "exec"],
+    });
+    expect(prompt).not.toContain("[load required]");
+    expect(prompt).not.toContain("Call tool_load");
+  });
+});

@@ -568,6 +568,8 @@ export async function runEmbeddedPiAgent(
         let accumulatedReplayState = createEmbeddedRunReplayState();
         // Hoisted so the retry-limit error path can use the most recent API total.
         let lastTurnTotal: number | undefined;
+        // Accumulate tool names loaded via tool_load across attempts (lazy loading).
+        let lazyLoadedToolNames: string[] = [];
         while (true) {
           if (runLoopIterations >= MAX_RUN_LOOP_ITERATIONS) {
             const message =
@@ -715,6 +717,7 @@ export async function runEmbeddedPiAgent(
             bootstrapPromptWarningSignaturesSeen,
             bootstrapPromptWarningSignature:
               bootstrapPromptWarningSignaturesSeen[bootstrapPromptWarningSignaturesSeen.length - 1],
+            loadedToolNames: lazyLoadedToolNames.length > 0 ? lazyLoadedToolNames : undefined,
           });
 
           const {
@@ -787,6 +790,16 @@ export async function runEmbeddedPiAgent(
             log.info(
               `[context-overflow-precheck] early recovery route=${preflightRecovery.route} ` +
                 `completed for ${provider}/${modelId}; retrying prompt`,
+            );
+            continue;
+          }
+          // Lazy loading: tool_load was called — accumulate names and re-run attempt
+          // with the newly loaded tools available.
+          if (attempt.toolLoadRequested && attempt.toolLoadRequested.length > 0) {
+            lazyLoadedToolNames.push(...attempt.toolLoadRequested);
+            log.info(
+              `[lazy-loading] tool_load requested: ${attempt.toolLoadRequested.join(", ")} ` +
+                `(total loaded: ${lazyLoadedToolNames.length})`,
             );
             continue;
           }

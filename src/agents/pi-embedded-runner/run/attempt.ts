@@ -111,6 +111,7 @@ import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { resolveAgentTimeoutMs } from "../../timeout.js";
 import { sanitizeToolCallIdsForCloudCodeAssist } from "../../tool-call-id.js";
+import { createToolLoadTool } from "../../tools/tool-load-tool.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
 import { normalizeUsage, type NormalizedUsage } from "../../usage.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
@@ -600,6 +601,59 @@ export async function runEmbeddedAttempt(
       model: params.model,
     });
 
+    // ── Lazy tool loading gate ──────────────────────────────────────
+    const lazyLoadingConfig = params.config?.tools?.lazyLoading;
+    const lazyLoadingEnabled =
+      lazyLoadingConfig?.enabled === true && !params.disableTools && toolsEnabled;
+
+    const DEFAULT_LAZY_CORE_TOOLS = new Set([
+      "read",
+      "write",
+      "edit",
+      "apply_patch",
+      "exec",
+      "process",
+      "message",
+      "session_status",
+    ]);
+
+    const coreToolNames = lazyLoadingEnabled
+      ? new Set([
+          ...DEFAULT_LAZY_CORE_TOOLS,
+          ...(lazyLoadingConfig?.coreTools ?? []).map((n) => n.toLowerCase()),
+          ...(params.loadedToolNames ?? []).map((n) => n.toLowerCase()),
+        ])
+      : null;
+
+    let lazyEffectiveTools: typeof effectiveTools;
+    let deferredToolNameSet: Set<string>;
+    let toolLoadRequestedNames: string[] | undefined;
+
+    if (coreToolNames) {
+      const core = effectiveTools.filter((t) => coreToolNames.has(t.name.toLowerCase()));
+      deferredToolNameSet = new Set(
+        effectiveTools.filter((t) => !coreToolNames.has(t.name.toLowerCase())).map((t) => t.name),
+      );
+
+      if (deferredToolNameSet.size > 0) {
+        const toolLoadTool = createToolLoadTool({
+          allToolNames: effectiveTools.map((t) => t.name),
+          coreToolNames: new Set(core.map((t) => t.name.toLowerCase())),
+          onLoad: (names) => {
+            toolLoadRequestedNames = names;
+          },
+        });
+        lazyEffectiveTools = core.some((t) => t.name === "tool_load")
+          ? core
+          : [...core, toolLoadTool];
+      } else {
+        lazyEffectiveTools = core;
+      }
+    } else {
+      lazyEffectiveTools = effectiveTools;
+      deferredToolNameSet = new Set();
+    }
+
     const machineName = await getMachineDisplayName();
     const runtimeChannel = normalizeMessageChannel(params.messageChannel ?? params.messageProvider);
     let runtimeCapabilities = runtimeChannel
@@ -766,7 +820,8 @@ export async function runEmbeddedAttempt(
         runtimeInfo,
         messageToolHints,
         sandboxInfo,
-        tools: effectiveTools,
+        tools: lazyEffectiveTools,
+        deferredToolNames: deferredToolNameSet.size > 0 ? deferredToolNameSet : undefined,
         modelAliasLines: buildModelAliasLines(params.config),
         userTimezone,
         userTime,
@@ -926,7 +981,7 @@ export async function runEmbeddedAttempt(
       const hookRunner = getGlobalHookRunner();
 
       const { builtInTools, customTools } = splitSdkTools({
-        tools: effectiveTools,
+        tools: lazyEffectiveTools,
         sandboxEnabled: !!sandbox?.enabled,
       });
 
@@ -2388,6 +2443,7 @@ export async function runEmbeddedAttempt(
         // Client tool call detected (OpenResponses hosted tools)
         clientToolCall: clientToolCallDetected ?? undefined,
         yieldDetected: yieldDetected || undefined,
+        toolLoadRequested: toolLoadRequestedNames,
       };
     } finally {
       // Always tear down the session (and release the lock) before we leave this attempt.
