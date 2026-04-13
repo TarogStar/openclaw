@@ -44,4 +44,40 @@ export type AutoContinueConfig = {
    * Default: false (safer — empty output usually means a crash or dead turn).
    */
   continueOnEmpty?: boolean;
+  /**
+   * Optional supervisor agent that reviews recent main-agent history and emits
+   * a targeted continuation directive instead of using the canned prompt.
+   *
+   * Useful when the main agent is prone to confabulation or stalls — the
+   * supervisor reads transcript + process file and decides CONTINUE / VERIFY /
+   * BLOCK with concrete redirection.
+   *
+   * If unset (default), auto-continue uses the canned `prompt` field.
+   */
+  reviewerAgentId?: string;
+  /**
+   * Prompt template handed to the supervisor. Placeholders interpolated:
+   *   {HISTORY}   — last N main-agent assistant turns
+   *   {PROCESS}   — content of `reviewerProcessPath` (may be empty)
+   *   {ITERATION} — current auto-continue iteration counter
+   *   {MAX}       — configured max iterations
+   *
+   * If unset, a built-in default template is used.
+   */
+  reviewerPrompt?: string;
+  /**
+   * Path to a process/skill file exposed in `{PROCESS}`. Best-effort read;
+   * missing file = empty placeholder. Default: undefined.
+   */
+  reviewerProcessPath?: string;
+  /**
+   * Hard cap on supervisor runtime in milliseconds. Default: 60_000.
+   * On timeout, falls back to the canned `prompt`.
+   */
+  reviewerTimeoutMs?: number;
+  /**
+   * Number of most-recent main-agent assistant turns to include in `{HISTORY}`.
+   * Default: 5.
+   */
+  reviewerHistoryTurns?: number;
 };

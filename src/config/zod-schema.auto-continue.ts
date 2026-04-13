@@ -14,6 +14,11 @@ export const AutoContinueSchema = z
     stopOnToolCall: z.array(z.string().min(1)).optional(),
     cooldownMs: z.number().int().nonnegative().optional(),
     continueOnEmpty: z.boolean().optional(),
+    reviewerAgentId: z.string().min(1).optional(),
+    reviewerPrompt: z.string().min(1).optional(),
+    reviewerProcessPath: z.string().min(1).optional(),
+    reviewerTimeoutMs: z.number().int().positive().optional(),
+    reviewerHistoryTurns: z.number().int().positive().optional(),
   })
   .strict()
   .optional();

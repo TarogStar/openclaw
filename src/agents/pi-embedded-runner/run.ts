@@ -70,6 +70,10 @@ import {
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
 import { derivePromptTokens, normalizeUsage, type UsageLike } from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
+import {
+  resolveAutoContinueSyntheticPrompt,
+  resolveReviewerConfig,
+} from "./auto-continue-reviewer.js";
 import { resolveAutoContinueConfig, shouldAutoContinue } from "./auto-continue.js";
 import { runPostCompactionSideEffects } from "./compact.js";
 import { buildEmbeddedCompactionRuntimeContext } from "./compaction-runtime-context.js";
@@ -577,6 +581,12 @@ export async function runEmbeddedPiAgent(
           cfg: params.config,
           agentId: params.agentId,
         });
+        const reviewerCfg = resolveReviewerConfig(autoContinueCfg);
+        // TODO: when a synchronous one-off LLM helper exists, plumb it here so
+        // the supervisor can actually run. Until then, reviewerCfg is honored
+        // for config validation but the supervisor path falls back to the
+        // canned prompt (resolveAutoContinueSyntheticPrompt handles this).
+        const spawnReviewer = null;
         let autoContinueIterations = 0;
         let pendingSyntheticPrompt: string | null = null;
         while (true) {
@@ -834,7 +844,14 @@ export async function runEmbeddedPiAgent(
               if (autoContinueCfg.cooldownMs > 0) {
                 await new Promise((r) => setTimeout(r, autoContinueCfg.cooldownMs));
               }
-              pendingSyntheticPrompt = autoContinueCfg.prompt;
+              pendingSyntheticPrompt = await resolveAutoContinueSyntheticPrompt({
+                autoContinueCfg,
+                reviewerCfg,
+                attempt,
+                iteration: autoContinueIterations,
+                spawnReviewer,
+                log,
+              });
               continue;
             }
             if (autoContinueIterations > 0) {

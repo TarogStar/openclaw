@@ -18,8 +18,10 @@ export const DEFAULT_AUTO_CONTINUE_STOP_SIGNALS = Object.freeze([
 ] as const);
 
 /**
- * Resolved + merged auto-continue config. All fields are concrete (no undefined)
- * so consumer code doesn't need to defend against missing defaults.
+ * Resolved + merged auto-continue config. Most fields are concrete (no undefined)
+ * so consumer code doesn't need to defend against missing defaults. Reviewer
+ * fields are passed through unchanged — see auto-continue-reviewer.ts for
+ * resolution into ResolvedReviewerConfig.
  */
 export type ResolvedAutoContinueConfig = {
   enabled: boolean;
@@ -29,6 +31,11 @@ export type ResolvedAutoContinueConfig = {
   stopOnToolCall: string[];
   cooldownMs: number;
   continueOnEmpty: boolean;
+  reviewerAgentId?: string;
+  reviewerPrompt?: string;
+  reviewerProcessPath?: string;
+  reviewerTimeoutMs?: number;
+  reviewerHistoryTurns?: number;
 };
 
 /**
@@ -72,6 +79,26 @@ export function resolveAutoContinueConfig(params: {
         ? Math.floor(merged.cooldownMs)
         : 0,
     continueOnEmpty: merged.continueOnEmpty === true,
+    reviewerAgentId:
+      typeof merged.reviewerAgentId === "string" && merged.reviewerAgentId.trim().length > 0
+        ? merged.reviewerAgentId
+        : undefined,
+    reviewerPrompt:
+      typeof merged.reviewerPrompt === "string" && merged.reviewerPrompt.trim().length > 0
+        ? merged.reviewerPrompt
+        : undefined,
+    reviewerProcessPath:
+      typeof merged.reviewerProcessPath === "string" && merged.reviewerProcessPath.trim().length > 0
+        ? merged.reviewerProcessPath
+        : undefined,
+    reviewerTimeoutMs:
+      typeof merged.reviewerTimeoutMs === "number" && merged.reviewerTimeoutMs > 0
+        ? Math.floor(merged.reviewerTimeoutMs)
+        : undefined,
+    reviewerHistoryTurns:
+      typeof merged.reviewerHistoryTurns === "number" && merged.reviewerHistoryTurns > 0
+        ? Math.floor(merged.reviewerHistoryTurns)
+        : undefined,
   };
 }
 
